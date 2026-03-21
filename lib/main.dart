@@ -1,0 +1,43 @@
+import 'package:flame/game.dart';
+import 'package:flutter/material.dart';
+
+import 'game/latch_legend_game.dart';
+import 'ui/game_over_overlay.dart';
+import 'ui/level_complete_overlay.dart';
+import 'ui/menu_overlay.dart';
+
+void main() {
+  runApp(const LatchLegendApp());
+}
+
+class LatchLegendApp extends StatelessWidget {
+  const LatchLegendApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final game = LatchLegendGame();
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: GameWidget(
+          game: game,
+          overlayBuilderMap: {
+            'menu': (context, _) => MenuOverlay(
+                  onPlay: () => game.startGame(),
+                ),
+            'gameOver': (context, _) => GameOverOverlay(
+                  coins: game.coinsCollected,
+                  onRetry: () => game.startGame(),
+                ),
+            'levelComplete': (context, _) => LevelCompleteOverlay(
+                  coins: game.coinsCollected,
+                  time: game.playTime,
+                  onContinue: () => game.startGame(),
+                ),
+          },
+        ),
+      ),
+    );
+  }
+}
