@@ -1,9 +1,13 @@
 import 'dart:math';
 import 'package:flame/components.dart';
+import 'package:flame/flame.dart';
+import 'package:flame/sprite.dart';
 import 'dart:ui';
 import '../config/game_constants.dart';
 
-class PlayerComponent extends PositionComponent {
+enum PlayerState { running, swinging }
+
+class PlayerComponent extends PositionComponent with HasGameReference {
   Vector2 velocity = Vector2.zero();
   bool isOnGround = false;
   bool isSwinging = false;
@@ -12,7 +16,16 @@ class PlayerComponent extends PositionComponent {
   double swingAngle = 0;
   double swingAngularVelocity = 0;
   bool isDead = false;
-  bool facingRight = true;
+
+  // Animation
+  double _animTime = 0;
+  SpriteSheet? _runSheet;
+  SpriteSheet? _swingSheet;
+  SpriteSheet? _hookSpinSheet;
+  bool _spritesLoaded = false;
+
+  // Hook spin while running
+  double _hookSpinAngle = 0;
 
   PlayerComponent()
       : super(
@@ -21,9 +34,32 @@ class PlayerComponent extends PositionComponent {
         );
 
   @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    try {
+      final runImage = await Flame.images.load('sprites/player_run.png');
+      _runSheet = SpriteSheet(image: runImage, srcSize: Vector2(32, 32));
+
+      final swingImage = await Flame.images.load('sprites/player_swing.png');
+      _swingSheet = SpriteSheet(image: swingImage, srcSize: Vector2(32, 32));
+
+      final hookSpinImage = await Flame.images.load('sprites/player_hook_spin.png');
+      _hookSpinSheet = SpriteSheet(image: hookSpinImage, srcSize: Vector2(32, 32));
+
+      _spritesLoaded = true;
+    } catch (_) {
+      // Fallback to drawn sprites if images fail
+      _spritesLoaded = false;
+    }
+  }
+
+  @override
   void update(double dt) {
     super.update(dt);
     if (isDead) return;
+
+    _animTime += dt;
+    _hookSpinAngle += dt * 8; // spin speed
 
     if (!isSwinging) {
       // Normal movement: gravity + auto-run
@@ -32,28 +68,26 @@ class PlayerComponent extends PositionComponent {
       velocity.x = GameConstants.playerRunSpeed;
       position += velocity * dt;
     } else if (swingAnchor != null) {
-      // --- Rope auto-retracts (pulls player toward anchor) ---
+      // Rope auto-retracts
       if (ropeLength > GameConstants.ropeMinLength) {
         ropeLength -= GameConstants.ropeReelSpeed * dt;
         ropeLength = max(ropeLength, GameConstants.ropeMinLength);
       }
 
-      // --- Pendulum gravity torque ---
+      // Pendulum gravity torque
       final gravityTorque =
           -(GameConstants.gravity / ropeLength) * sin(swingAngle);
       swingAngularVelocity += gravityTorque * dt;
 
-      // --- Forward bias: gentle push in the positive (rightward) swing direction ---
-      // This mimics how Hook Champ swings always feel like they propel you forward
+      // Forward bias
       swingAngularVelocity +=
           (GameConstants.swingForwardBias / ropeLength) * dt;
 
-      // Very light damping
+      // Light damping
       swingAngularVelocity *= pow(0.997, dt * 60).toDouble();
 
       swingAngle += swingAngularVelocity * dt;
 
-      // Position from anchor
       position.x = swingAnchor!.x + sin(swingAngle) * ropeLength;
       position.y = swingAnchor!.y + cos(swingAngle) * ropeLength;
     }
@@ -72,13 +106,9 @@ class PlayerComponent extends PositionComponent {
     isSwinging = true;
     isOnGround = false;
 
-    // Angle from vertical (straight down = 0, right = positive)
     final diff = position - anchor;
     swingAngle = atan2(diff.x, diff.y);
 
-    // Convert current linear velocity into angular velocity
-    // Tangential direction at this angle is (cos(angle), -sin(angle))
-    // Angular velocity = tangential_speed / ropeLength
     final tangentialSpeed = velocity.x * cos(swingAngle) - velocity.y * sin(swingAngle);
     swingAngularVelocity = tangentialSpeed / ropeLength;
   }
@@ -86,20 +116,15 @@ class PlayerComponent extends PositionComponent {
   void detachFromGrapple() {
     if (!isSwinging) return;
 
-    // Convert angular velocity back to linear velocity
     final speed = swingAngularVelocity * ropeLength;
     velocity.x = speed * cos(swingAngle);
     velocity.y = -speed * sin(swingAngle);
 
-    // Momentum boost: if releasing while swinging forward (positive angular vel)
-    // and on the upswing (angle > 0 means right of anchor), give a boost
     if (swingAngularVelocity > 0) {
       velocity.x *= GameConstants.swingBoostMultiplier;
-      // Upward launch boost — the faster the swing, the bigger the launch
       velocity.y -= 80 + (swingAngularVelocity * ropeLength * 0.3).abs();
     }
 
-    // Ensure we keep at least run speed going forward
     if (velocity.x < GameConstants.playerRunSpeed) {
       velocity.x = GameConstants.playerRunSpeed;
     }
@@ -112,49 +137,98 @@ class PlayerComponent extends PositionComponent {
   void render(Canvas canvas) {
     super.render(canvas);
 
-    // Boots (dark brown)
+    if (_spritesLoaded) {
+      _renderSprite(canvas);
+    } else {
+      _renderFallback(canvas);
+    }
+  }
+
+  void _renderSprite(Canvas canvas) {
+    final frameIndex = ((_animTime * 8) % 4).floor(); // 8 fps animation
+
+    Sprite sprite;
+    if (isSwinging) {
+      sprite = _swingSheet!.getSpriteById(frameIndex);
+    } else {
+      // Use hook spin sheet while running (shows hook spinning above head)
+      sprite = _hookSpinSheet!.getSpriteById(frameIndex);
+    }
+
+    sprite.render(
+      canvas,
+      position: Vector2(-4, -2), // center the 32x32 sprite on the 24x28 component
+      size: Vector2(32, 32),
+    );
+  }
+
+  void _renderFallback(Canvas canvas) {
+    // Boots
     canvas.drawRect(
-      const Rect.fromLTWH(4, 26, 7, 6),
+      const Rect.fromLTWH(4, 22, 7, 6),
       Paint()..color = GameConstants.playerPants,
     );
     canvas.drawRect(
-      const Rect.fromLTWH(13, 26, 7, 6),
+      const Rect.fromLTWH(13, 22, 7, 6),
       Paint()..color = GameConstants.playerPants,
     );
 
     // Pants
     canvas.drawRect(
-      const Rect.fromLTWH(5, 20, 14, 8),
+      const Rect.fromLTWH(5, 16, 14, 8),
       Paint()..color = GameConstants.playerPants,
     );
 
-    // Shirt / body
+    // Shirt
     canvas.drawRect(
-      const Rect.fromLTWH(4, 12, 16, 10),
+      const Rect.fromLTWH(4, 8, 16, 10),
       Paint()..color = GameConstants.playerShirt,
     );
 
-    // Head (skin)
+    // Head
     canvas.drawCircle(
-      const Offset(12, 9),
-      6,
+      const Offset(12, 6),
+      5,
       Paint()..color = GameConstants.playerSkin,
     );
 
-    // Explorer hat
+    // Hat
     canvas.drawRect(
-      const Rect.fromLTWH(2, 2, 20, 4),
+      const Rect.fromLTWH(3, 0, 18, 3),
       Paint()..color = GameConstants.playerHat,
     );
     canvas.drawRect(
-      const Rect.fromLTWH(6, 0, 12, 5),
+      const Rect.fromLTWH(6, -2, 12, 4),
       Paint()..color = GameConstants.playerHat,
     );
 
-    // Eyes
+    // Eye
     canvas.drawRect(
-      const Rect.fromLTWH(14, 7, 2, 2),
+      const Rect.fromLTWH(14, 5, 2, 2),
       Paint()..color = const Color(0xFF000000),
     );
+
+    // Hook spin circle while running (not swinging)
+    if (!isSwinging) {
+      final hookRadius = 12.0;
+      final hx = 12 + cos(_hookSpinAngle) * hookRadius;
+      final hy = -4 + sin(_hookSpinAngle) * hookRadius;
+
+      // Rope line
+      canvas.drawLine(
+        const Offset(14, 4),
+        Offset(hx, hy),
+        Paint()
+          ..color = GameConstants.ropeColor
+          ..strokeWidth = 1,
+      );
+
+      // Hook
+      canvas.drawCircle(
+        Offset(hx, hy),
+        3,
+        Paint()..color = GameConstants.grappleColor,
+      );
+    }
   }
 }

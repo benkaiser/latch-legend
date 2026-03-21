@@ -5,12 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../components/background_component.dart';
-import '../components/ceiling_component.dart';
 import '../components/coin_component.dart';
 import '../components/exit_component.dart';
 import '../components/hook_chain_component.dart';
-import '../components/platform_component.dart';
 import '../components/player_component.dart';
+import '../components/tile_map_component.dart';
 import '../components/wall_of_death_component.dart';
 import '../config/game_constants.dart';
 import '../levels/level_one.dart';
@@ -25,10 +24,8 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   late HookChainComponent hookChain;
   late BackgroundComponent background;
   late HudComponent hud;
-  late ExitComponent exit;
+  late TileMapComponent tileMap;
 
-  final List<PlatformBlock> platforms = [];
-  final List<CeilingBlock> ceilings = [];
   final List<CoinComponent> coins = [];
 
   GameState state = GameState.menu;
@@ -52,54 +49,52 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     camera.viewport.removeAll(camera.viewport.children);
     camera.backdrop.removeAll(camera.backdrop.children);
 
-    platforms.clear();
-    ceilings.clear();
     coins.clear();
     coinsCollected = 0;
     playTime = 0;
 
     // Load level
     levelData = buildLevelOne();
+    final ts = GameConstants.tileSize;
 
     // Background
     background = BackgroundComponent();
     camera.backdrop.add(background);
 
-    // Floor platforms
-    for (final p in levelData.platforms) {
-      final block = PlatformBlock(
-        x: p.x, y: p.y, width: p.width, height: p.height,
-      );
-      platforms.add(block);
-      world.add(block);
-    }
+    // Tile map (renders all solid tiles)
+    tileMap = TileMapComponent(level: levelData);
+    world.add(tileMap);
 
-    // Ceiling blocks
-    for (final c in levelData.ceilings) {
-      final block = CeilingBlock(
-        x: c.x, y: c.y, width: c.width, height: c.height,
-      );
-      ceilings.add(block);
-      world.add(block);
+    // Spawn coins and find exit from the grid
+    for (int row = 0; row < levelData.height; row++) {
+      for (int col = 0; col < levelData.width; col++) {
+        final tile = levelData.grid[row][col];
+        if (tile == TileType.coin) {
+          final coin = CoinComponent(
+            x: col * ts + ts / 2,
+            y: row * ts + ts / 2,
+          );
+          coins.add(coin);
+          world.add(coin);
+        } else if (tile == TileType.exit) {
+          final exit = ExitComponent(
+            x: col * ts + ts / 2,
+            y: (row + 1) * ts,
+          );
+          world.add(exit);
+        }
+      }
     }
-
-    // Coins
-    for (final c in levelData.coins) {
-      final coin = CoinComponent(x: c.x, y: c.y);
-      coins.add(coin);
-      world.add(coin);
-    }
-
-    // Exit
-    exit = ExitComponent(x: levelData.exitX, y: levelData.exitY);
-    world.add(exit);
 
     // Player
     player = PlayerComponent();
-    player.position = Vector2(levelData.startX, levelData.startY);
+    player.position = Vector2(
+      levelData.startCol * ts + ts / 2,
+      levelData.startRow * ts + ts / 2,
+    );
     world.add(player);
 
-    // Hook chain (visual rope)
+    // Hook chain
     hookChain = HookChainComponent();
     world.add(hookChain);
 
@@ -117,7 +112,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     state = GameState.playing;
   }
 
-  // --- Update loop ---
+  // --- Update ---
 
   @override
   void update(double dt) {
@@ -126,7 +121,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
     playTime += dt;
 
-    _handleCollisions();
+    _handleTileCollisions();
     _updateHookChain();
     _updateHud();
     _updateBackground();
@@ -135,33 +130,70 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     _checkFellOff();
   }
 
-  // --- Collisions ---
+  // --- Tile-based collision ---
 
-  void _handleCollisions() {
+  void _handleTileCollisions() {
+    final ts = GameConstants.tileSize;
     player.isOnGround = false;
 
     if (!player.isSwinging) {
-      // Floor
-      for (final p in platforms) {
-        if (_playerOnPlatform(p)) {
-          player.position.y = p.position.y;
+      final px = player.position.x;
+      final py = player.position.y;
+      final halfW = player.size.x / 2 - 2;
+      final halfH = player.size.y / 2;
+
+      // Floor collision: check tiles below player's feet
+      final feetY = py + halfH;
+      final feetRow = (feetY / ts).floor();
+      final colL = ((px - halfW) / ts).floor();
+      final colR = ((px + halfW) / ts).floor();
+
+      for (int c = colL; c <= colR; c++) {
+        if (levelData.isSolid(c, feetRow) && player.velocity.y >= 0) {
+          player.position.y = feetRow * ts - halfH;
           player.velocity.y = 0;
           player.isOnGround = true;
           break;
         }
       }
 
-      // Ceiling
-      for (final c in ceilings) {
-        if (_playerHitCeiling(c)) {
-          player.position.y = c.position.y + c.size.y + player.size.y / 2;
-          if (player.velocity.y < 0) player.velocity.y = 0;
+      // Ceiling collision: check tiles above player's head
+      final headY = py - halfH;
+      final headRow = (headY / ts).floor();
+      for (int c = colL; c <= colR; c++) {
+        if (levelData.isSolid(c, headRow) && player.velocity.y < 0) {
+          player.position.y = (headRow + 1) * ts + halfH;
+          player.velocity.y = 0;
+          break;
+        }
+      }
+
+      // Left wall collision
+      final leftX = px - halfW;
+      final leftCol = (leftX / ts).floor();
+      final rowT = ((py - halfH + 4) / ts).floor();
+      final rowB = ((py + halfH - 4) / ts).floor();
+      for (int r = rowT; r <= rowB; r++) {
+        if (levelData.isSolid(leftCol, r)) {
+          player.position.x = (leftCol + 1) * ts + halfW;
+          if (player.velocity.x < 0) player.velocity.x = 0;
+          break;
+        }
+      }
+
+      // Right wall collision
+      final rightX = px + halfW;
+      final rightCol = (rightX / ts).floor();
+      for (int r = rowT; r <= rowB; r++) {
+        if (levelData.isSolid(rightCol, r)) {
+          player.position.x = rightCol * ts - halfW;
+          if (player.velocity.x > 0) player.velocity.x = 0;
           break;
         }
       }
     }
 
-    // Coins
+    // Coin collection
     for (final coin in coins) {
       if (!coin.isCollected) {
         final dist = (player.position - coin.position).length;
@@ -171,30 +203,6 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
         }
       }
     }
-  }
-
-  bool _playerOnPlatform(PlatformBlock p) {
-    final px = player.position.x;
-    final py = player.position.y;
-    final prevY = py - player.velocity.y * 0.016;
-
-    return px > p.position.x - 8 &&
-        px < p.position.x + p.size.x + 8 &&
-        py >= p.position.y &&
-        prevY <= p.position.y + 16 &&
-        player.velocity.y >= 0;
-  }
-
-  bool _playerHitCeiling(CeilingBlock c) {
-    final px = player.position.x;
-    final playerTop = player.position.y - player.size.y / 2;
-    final cBottom = c.position.y + c.size.y;
-
-    return px > c.position.x &&
-        px < c.position.x + c.size.x &&
-        playerTop < cBottom + 10 &&
-        playerTop > c.position.y &&
-        player.velocity.y < 0;
   }
 
   // --- Hook chain visual ---
@@ -213,14 +221,15 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
   void _updateHud() {
     hud.coins = coinsCollected;
-    hud.distanceTraveled = max(0, player.position.x - levelData.startX) / 50;
+    final startX = levelData.startCol * GameConstants.tileSize;
+    hud.distanceTraveled = max(0, player.position.x - startX) / 50;
   }
 
   void _updateBackground() {
     background.cameraX = camera.viewfinder.position.x;
   }
 
-  // --- Win/lose checks ---
+  // --- Win/lose ---
 
   void _checkWallOfDeath() {
     if (wallOfDeath.active &&
@@ -230,14 +239,22 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   }
 
   void _checkExit() {
-    final dist = (player.position - Vector2(exit.position.x, exit.position.y)).length;
-    if (dist < 50) {
-      _levelComplete();
+    final ts = GameConstants.tileSize;
+    // Check if player overlaps any exit tile
+    final col = (player.position.x / ts).floor();
+    final row = (player.position.y / ts).floor();
+    for (int dr = -1; dr <= 1; dr++) {
+      for (int dc = -1; dc <= 1; dc++) {
+        if (levelData.getTile(col + dc, row + dr) == TileType.exit) {
+          _levelComplete();
+          return;
+        }
+      }
     }
   }
 
   void _checkFellOff() {
-    if (player.position.y > GameConstants.levelHeight + 100) {
+    if (player.position.y > levelData.height * GameConstants.tileSize + 100) {
       _gameOver();
     }
   }
@@ -254,40 +271,37 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     overlays.add('levelComplete');
   }
 
-  // --- Ceiling hook: find where the hook hits the ceiling above the player ---
+  // --- Ceiling hook: raycast upward to find solid tile above player ---
 
   Vector2? _findCeilingHookPoint() {
+    final ts = GameConstants.tileSize;
     final px = player.position.x;
     final py = player.position.y;
 
-    // Look slightly ahead of the player (hook fires up and forward)
-    final hookTargetX = px + 40;
+    // Aim slightly ahead
+    final hookX = px + 30;
+    final col = (hookX / ts).floor();
 
-    // Find the ceiling block above the player
-    CeilingBlock? hitCeiling;
-    for (final c in ceilings) {
-      if (hookTargetX >= c.position.x &&
-          hookTargetX <= c.position.x + c.size.x) {
-        // This ceiling is above us
-        final cBottom = c.position.y + c.size.y;
-        if (cBottom < py) {
-          hitCeiling = c;
-          break;
-        }
+    // Scan upward from player's row
+    final startRow = (py / ts).floor();
+    for (int row = startRow - 1; row >= 0; row--) {
+      if (levelData.isSolid(col, row)) {
+        // Found ceiling — hook attaches to the bottom center of this tile
+        final hookPoint = Vector2(
+          col * ts + ts / 2,
+          (row + 1) * ts.toDouble(), // bottom edge of solid tile
+        );
+
+        // Check range
+        final dist = (player.position - hookPoint).length;
+        if (dist > GameConstants.hookRange) return null;
+        if (dist < 20) return null; // too close
+
+        return hookPoint;
       }
     }
 
-    if (hitCeiling == null) return null;
-
-    // Hook point is on the underside of the ceiling
-    final hookY = hitCeiling.position.y + hitCeiling.size.y;
-    final hookPos = Vector2(hookTargetX, hookY);
-
-    // Check range
-    final dist = (player.position - hookPos).length;
-    if (dist > GameConstants.hookRange) return null;
-
-    return hookPos;
+    return null; // no ceiling found
   }
 
   // --- Input ---
@@ -296,17 +310,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     if (state != GameState.playing) return;
 
     if (player.isSwinging) {
-      // Release hook
       player.detachFromGrapple();
       return;
     }
 
-    // Try to hook onto the ceiling above
     final hookPoint = _findCeilingHookPoint();
     if (hookPoint != null) {
       player.attachToGrapple(hookPoint);
     } else {
-      // No ceiling in range — jump instead
       player.jump();
     }
   }

@@ -13,7 +13,7 @@ class WallOfDeathComponent extends PositionComponent {
   WallOfDeathComponent()
       : super(
           position: Vector2(-500, 0),
-          size: Vector2(500, GameConstants.levelHeight),
+          size: Vector2(500, GameConstants.gridHeight * GameConstants.tileSize),
         );
 
   @override
