@@ -25,6 +25,7 @@ class LatchLegendApp extends StatelessWidget {
           overlayBuilderMap: {
             'menu': (context, _) => MenuOverlay(
                   onPlay: () => game.startGame(level: 0),
+                  onSelectLevel: (level) => game.startGame(level: level),
                 ),
             'gameOver': (context, _) => GameOverOverlay(
                   coins: game.coinsCollected,

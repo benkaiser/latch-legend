@@ -7,19 +7,27 @@ class HookChainComponent extends Component {
   Vector2 endPos = Vector2.zero();
   bool isVisible = false;
 
+  static final Paint _ropePaint = Paint()
+    ..color = GameConstants.ropeColor
+    ..strokeWidth = 3
+    ..style = PaintingStyle.stroke;
+
+  static final Paint _chainPaint = Paint()
+    ..color = GameConstants.ropeColor
+    ..style = PaintingStyle.fill;
+
+  static final Paint _hookPaint = Paint()
+    ..color = GameConstants.grappleColor
+    ..style = PaintingStyle.fill;
+
   @override
   void render(Canvas canvas) {
     if (!isVisible) return;
 
-    final paint = Paint()
-      ..color = GameConstants.ropeColor
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
-
     canvas.drawLine(
       Offset(startPos.x, startPos.y),
       Offset(endPos.x, endPos.y),
-      paint,
+      _ropePaint,
     );
 
     // Draw small circles along the line for a chain-link effect
@@ -28,14 +36,14 @@ class HookChainComponent extends Component {
     if (length < 1) return;
 
     final dir = diff.normalized();
-    final chainPaint = Paint()
-      ..color = GameConstants.ropeColor
-      ..style = PaintingStyle.fill;
 
     for (double d = 20; d < length; d += 20) {
       final p = startPos + dir * d;
-      canvas.drawCircle(Offset(p.x, p.y), 2.5, chainPaint);
+      canvas.drawCircle(Offset(p.x, p.y), 2.5, _chainPaint);
     }
+
+    // Draw hook at the anchor point
+    canvas.drawCircle(Offset(endPos.x, endPos.y), 5, _hookPaint);
   }
 
   @override

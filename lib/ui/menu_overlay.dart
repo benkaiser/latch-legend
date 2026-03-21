@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 
 class MenuOverlay extends StatelessWidget {
   final VoidCallback onPlay;
+  final void Function(int level) onSelectLevel;
+  final int unlockedLevels;
 
-  const MenuOverlay({super.key, required this.onPlay});
+  const MenuOverlay({
+    super.key,
+    required this.onPlay,
+    required this.onSelectLevel,
+    this.unlockedLevels = 5,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -58,8 +65,48 @@ class MenuOverlay extends StatelessWidget {
               child: const Text('PLAY'),
             ),
             const SizedBox(height: 24),
+            // Level select buttons
             const Text(
-              'Space / Tap to hook & release • Up to jump',
+              'SELECT LEVEL',
+              style: TextStyle(
+                color: Color(0x99FFFFFF),
+                fontSize: 14,
+                fontFamily: 'monospace',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(5, (i) {
+                final unlocked = i < unlockedLevels;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: ElevatedButton(
+                      onPressed: unlocked ? () => onSelectLevel(i) : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: unlocked
+                            ? const Color(0xFF4488CC)
+                            : const Color(0xFF333333),
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero,
+                        textStyle: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      child: Text('${i + 1}'),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Space / Tap to hook & release',
               style: TextStyle(
                 color: Color(0x99FFFFFF),
                 fontSize: 14,
