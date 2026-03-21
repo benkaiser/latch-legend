@@ -108,7 +108,9 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     world.add(hookChain);
 
     // Wall of Death
-    wallOfDeath = WallOfDeathComponent();
+    wallOfDeath = WallOfDeathComponent(
+      mapHeight: levelData.height * GameConstants.tileSize,
+    );
     world.add(wallOfDeath);
 
     // HUD
@@ -128,8 +130,8 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
   @override
   void update(double dt) {
-    super.update(dt);
     if (state != GameState.playing) return;
+    super.update(dt);
 
     playTime += dt;
 
@@ -251,7 +253,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
     // Clamp vertical to keep cave in view
     final mapHeight = levelData.height * GameConstants.tileSize;
-    camPos.y = camPos.y.clamp(size.y / 2, mapHeight - size.y / 2);
+    final minY = size.y / 2;
+    final maxY = mapHeight - size.y / 2;
+    // When window is taller than the map, center vertically
+    if (minY > maxY) {
+      camPos.y = mapHeight / 2;
+    } else {
+      camPos.y = camPos.y.clamp(minY, maxY);
+    }
 
     camera.viewfinder.position = camPos;
   }
@@ -316,7 +325,11 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
       currentLevel++;
       startGame();
     } else {
-      // All levels complete — return to menu
+      // All levels complete — clean up and return to menu
+      world.removeAll(world.children);
+      camera.viewport.removeAll(camera.viewport.children);
+      camera.backdrop.removeAll(camera.backdrop.children);
+      coins.clear();
       currentLevel = 0;
       state = GameState.menu;
       overlays.add('menu');

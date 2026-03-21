@@ -14,10 +14,10 @@ class WallOfDeathComponent extends PositionComponent {
   flame_sprite.Sprite? _ghostSprite;
   bool _spriteLoaded = false;
 
-  WallOfDeathComponent()
+  WallOfDeathComponent({double mapHeight = GameConstants.gridHeight * GameConstants.tileSize})
       : super(
           position: Vector2(-500, 0),
-          size: Vector2(500, GameConstants.gridHeight * GameConstants.tileSize),
+          size: Vector2(500, mapHeight),
         );
 
   @override

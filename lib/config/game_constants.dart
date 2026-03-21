@@ -17,7 +17,6 @@ class GameConstants {
 
   // Hook / Grapple
   static const double hookRange = 350.0;
-  static const double hookSpeed = 800.0;
   static const double ropeReelSpeed = 120.0;
   static const double ropeMinLength = 40.0;
   static const double swingBoostMultiplier = 1.4;
@@ -45,7 +44,6 @@ class GameConstants {
   static const Color caveBgMid = Color(0xFF1a1209);
   static const Color caveWallDark = Color(0xFF1e1409);
   static const Color caveWallMid = Color(0xFF2a1c10);
-  static const Color caveMidBg = Color(0xFF3a2515);
   static const Color tileColor = Color(0xFF4a3520);
   static const Color tileBorder = Color(0xFF2e1f12);
   static const Color tileHighlight = Color(0xFF6a5040);

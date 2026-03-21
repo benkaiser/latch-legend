@@ -8,26 +8,23 @@ import '../config/game_constants.dart';
 /// Lightweight particle burst for coin collection, hook events, etc.
 class ParticleBurstComponent extends PositionComponent {
   final Color color;
-  final int count;
-  final double speed;
   final double lifetime;
   double _elapsed = 0;
 
-  late final List<_Particle> _particles;
+  final List<_Particle> _particles;
 
   ParticleBurstComponent({
     required Vector2 pos,
     this.color = GameConstants.coinColor,
-    this.count = 8,
-    this.speed = 100,
+    int count = 8,
+    double speed = 100,
     this.lifetime = 0.5,
-  }) : super(position: pos);
+  })  : _particles = _generateParticles(count, speed),
+        super(position: pos);
 
-  @override
-  Future<void> onLoad() async {
-    await super.onLoad();
+  static List<_Particle> _generateParticles(int count, double speed) {
     final rng = Random();
-    _particles = List.generate(count, (_) {
+    return List.generate(count, (_) {
       final angle = rng.nextDouble() * 2 * pi;
       final spd = speed * (0.5 + rng.nextDouble() * 0.5);
       return _Particle(
@@ -55,13 +52,14 @@ class ParticleBurstComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final alpha = ((1 - _elapsed / lifetime) * 255).toInt().clamp(0, 255);
+    final progress = (_elapsed / lifetime).clamp(0.0, 1.0);
+    final alpha = ((1 - progress) * 255).toInt().clamp(0, 255);
     final paint = Paint()..color = color.withAlpha(alpha);
 
     for (final p in _particles) {
       canvas.drawCircle(
         Offset(p.x, p.y),
-        p.size * (1 - _elapsed / lifetime),
+        p.size * (1 - progress),
         paint,
       );
     }
