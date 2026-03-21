@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 class HudComponent extends PositionComponent with HasGameReference {
   int coins = 0;
   double distanceTraveled = 0;
+  String levelName = '';
 
   final TextPaint _coinPaint = TextPaint(
     style: const TextStyle(
@@ -22,6 +23,14 @@ class HudComponent extends PositionComponent with HasGameReference {
     ),
   );
 
+  final TextPaint _levelPaint = TextPaint(
+    style: const TextStyle(
+      color: Color(0x99FFFFFF),
+      fontSize: 14,
+      fontFamily: 'monospace',
+    ),
+  );
+
   HudComponent() : super(priority: 100);
 
   @override
@@ -32,6 +41,15 @@ class HudComponent extends PositionComponent with HasGameReference {
       'Coins: $coins',
       Vector2(16, 16),
     );
+
+    // Level name top-center
+    if (levelName.isNotEmpty) {
+      _levelPaint.render(
+        canvas,
+        levelName,
+        Vector2(game.size.x / 2 - levelName.length * 4, 16),
+      );
+    }
 
     // Distance top-right
     final distText = '${distanceTraveled.toInt()}m';

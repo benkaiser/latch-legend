@@ -8,11 +8,12 @@ import '../components/background_component.dart';
 import '../components/coin_component.dart';
 import '../components/exit_component.dart';
 import '../components/hook_chain_component.dart';
+import '../components/particle_burst_component.dart';
 import '../components/player_component.dart';
 import '../components/tile_map_component.dart';
 import '../components/wall_of_death_component.dart';
 import '../config/game_constants.dart';
-import '../levels/level_one.dart';
+import '../levels/level_registry.dart';
 import '../models/level_data.dart';
 import '../ui/hud_component.dart';
 
@@ -31,7 +32,11 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   GameState state = GameState.menu;
   int coinsCollected = 0;
   double playTime = 0;
+  int currentLevel = 0;
   late LevelData levelData;
+
+  String get currentLevelName => levels[currentLevel].name;
+  bool get hasNextLevel => currentLevel < levelCount - 1;
 
   @override
   Future<void> onLoad() async {
@@ -39,10 +44,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     overlays.add('menu');
   }
 
-  void startGame() {
+  void startGame({int? level}) {
     overlays.remove('menu');
     overlays.remove('gameOver');
     overlays.remove('levelComplete');
+
+    if (level != null) {
+      currentLevel = level.clamp(0, levelCount - 1);
+    }
 
     // Clear everything
     world.removeAll(world.children);
@@ -54,7 +63,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     playTime = 0;
 
     // Load level
-    levelData = buildLevelOne();
+    levelData = levels[currentLevel].builder();
     final ts = GameConstants.tileSize;
 
     // Background
@@ -106,8 +115,11 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     hud = HudComponent();
     camera.viewport.add(hud);
 
-    // Camera
-    camera.follow(player);
+    // Camera — manual follow with look-ahead (set in update)
+    camera.viewfinder.position = Vector2(
+      player.position.x + GameConstants.cameraLookAheadX,
+      player.position.y + GameConstants.cameraLookAheadY,
+    );
 
     state = GameState.playing;
   }
@@ -123,6 +135,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
     _handleTileCollisions();
     _updateHookChain();
+    _updateCamera(dt);
     _updateHud();
     _updateBackground();
     _checkWallOfDeath();
@@ -200,6 +213,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
         if (dist < GameConstants.coinCollectRadius) {
           coin.isCollected = true;
           coinsCollected++;
+          // Spawn particle burst at coin position
+          world.add(ParticleBurstComponent(
+            pos: coin.position.clone(),
+            color: GameConstants.coinColor,
+            count: 10,
+            speed: 120,
+            lifetime: 0.4,
+          ));
         }
       }
     }
@@ -217,10 +238,29 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     }
   }
 
+  // --- Camera with look-ahead ---
+
+  void _updateCamera(double dt) {
+    final targetX = player.position.x + GameConstants.cameraLookAheadX;
+    final targetY = player.position.y + GameConstants.cameraLookAheadY;
+
+    final camPos = camera.viewfinder.position;
+    final smooth = GameConstants.cameraSmoothSpeed * dt;
+    camPos.x += (targetX - camPos.x) * smooth;
+    camPos.y += (targetY - camPos.y) * smooth;
+
+    // Clamp vertical to keep cave in view
+    final mapHeight = levelData.height * GameConstants.tileSize;
+    camPos.y = camPos.y.clamp(size.y / 2, mapHeight - size.y / 2);
+
+    camera.viewfinder.position = camPos;
+  }
+
   // --- HUD ---
 
   void _updateHud() {
     hud.coins = coinsCollected;
+    hud.levelName = currentLevelName;
     final startX = levelData.startCol * GameConstants.tileSize;
     hud.distanceTraveled = max(0, player.position.x - startX) / 50;
   }
@@ -271,37 +311,60 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     overlays.add('levelComplete');
   }
 
+  void nextLevel() {
+    if (hasNextLevel) {
+      currentLevel++;
+      startGame();
+    } else {
+      // All levels complete — return to menu
+      currentLevel = 0;
+      state = GameState.menu;
+      overlays.add('menu');
+    }
+  }
+
   // --- Ceiling hook: raycast upward to find solid tile above player ---
+  // Scans multiple columns ahead for the best hook point
 
   Vector2? _findCeilingHookPoint() {
     final ts = GameConstants.tileSize;
     final px = player.position.x;
     final py = player.position.y;
 
-    // Aim slightly ahead
-    final hookX = px + 30;
-    final col = (hookX / ts).floor();
+    Vector2? bestPoint;
+    double bestDist = double.infinity;
 
-    // Scan upward from player's row
-    final startRow = (py / ts).floor();
-    for (int row = startRow - 1; row >= 0; row--) {
-      if (levelData.isSolid(col, row)) {
-        // Found ceiling — hook attaches to the bottom center of this tile
-        final hookPoint = Vector2(
-          col * ts + ts / 2,
-          (row + 1) * ts.toDouble(), // bottom edge of solid tile
-        );
+    // Scan columns from slightly behind to well ahead of player
+    for (final offsetX in [30.0, 60.0, 0.0, 90.0, -10.0]) {
+      final hookX = px + offsetX;
+      final col = (hookX / ts).floor();
 
-        // Check range
-        final dist = (player.position - hookPoint).length;
-        if (dist > GameConstants.hookRange) return null;
-        if (dist < 20) return null; // too close
+      // Scan upward from player's row
+      final startRow = (py / ts).floor();
+      for (int row = startRow - 1; row >= 0; row--) {
+        if (levelData.isSolid(col, row)) {
+          // Found ceiling — hook attaches to the bottom center of this tile
+          final hookPoint = Vector2(
+            col * ts + ts / 2,
+            (row + 1) * ts.toDouble(),
+          );
 
-        return hookPoint;
+          // Check range
+          final dist = (player.position - hookPoint).length;
+          if (dist > GameConstants.hookRange) break;
+          if (dist < 20) break; // too close
+
+          // Prefer hooks ahead of the player and closer
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestPoint = hookPoint;
+          }
+          break;
+        }
       }
     }
 
-    return null; // no ceiling found
+    return bestPoint;
   }
 
   // --- Input ---
@@ -317,6 +380,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     final hookPoint = _findCeilingHookPoint();
     if (hookPoint != null) {
       player.attachToGrapple(hookPoint);
+      // Spark effect at hook point
+      world.add(ParticleBurstComponent(
+        pos: hookPoint.clone(),
+        color: GameConstants.grappleActiveColor,
+        count: 6,
+        speed: 80,
+        lifetime: 0.3,
+      ));
     } else {
       player.jump();
     }

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 class GameOverOverlay extends StatelessWidget {
   final int coins;
+  final String levelName;
   final VoidCallback onRetry;
 
   const GameOverOverlay({
     super.key,
     required this.coins,
+    required this.levelName,
     required this.onRetry,
   });
 
@@ -26,6 +28,15 @@ class GameOverOverlay extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 fontFamily: 'monospace',
                 letterSpacing: 4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              levelName,
+              style: const TextStyle(
+                color: Color(0xFFBBBBBB),
+                fontSize: 18,
+                fontFamily: 'monospace',
               ),
             ),
             const SizedBox(height: 16),

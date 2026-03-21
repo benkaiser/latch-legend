@@ -2,6 +2,8 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flame/flame.dart';
+import 'package:flame/sprite.dart' as flame_sprite;
 
 import '../config/game_constants.dart';
 
@@ -9,12 +11,26 @@ class WallOfDeathComponent extends PositionComponent {
   double speed = 0;
   double _elapsed = 0;
   bool active = false;
+  flame_sprite.Sprite? _ghostSprite;
+  bool _spriteLoaded = false;
 
   WallOfDeathComponent()
       : super(
           position: Vector2(-500, 0),
           size: Vector2(500, GameConstants.gridHeight * GameConstants.tileSize),
         );
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    try {
+      final img = await Flame.images.load('sprites/ghost.png');
+      _ghostSprite = flame_sprite.Sprite(img);
+      _spriteLoaded = true;
+    } catch (_) {
+      _spriteLoaded = false;
+    }
+  }
 
   @override
   void update(double dt) {
@@ -47,6 +63,22 @@ class WallOfDeathComponent extends PositionComponent {
     final faceX = size.x - 80;
     final faceY = size.y * 0.45;
 
+    if (_spriteLoaded && _ghostSprite != null) {
+      // Render ghost sprite — scale to 96x96 for intimidating size
+      final ghostSize = 96.0;
+      // Slight bob animation
+      final bobY = sin(_elapsed * 2) * 6;
+      _ghostSprite!.render(
+        canvas,
+        position: Vector2(faceX - ghostSize / 2, faceY - ghostSize / 2 + bobY),
+        size: Vector2(ghostSize, ghostSize),
+      );
+    } else {
+      _renderFallbackGhost(canvas, faceX, faceY);
+    }
+  }
+
+  void _renderFallbackGhost(Canvas canvas, double faceX, double faceY) {
     // Dark blob body
     final blobPaint = Paint()..color = const Color(0xFF1a0505);
     canvas.drawOval(

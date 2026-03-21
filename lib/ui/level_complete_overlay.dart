@@ -3,13 +3,19 @@ import 'package:flutter/material.dart';
 class LevelCompleteOverlay extends StatelessWidget {
   final int coins;
   final double time;
-  final VoidCallback onContinue;
+  final String levelName;
+  final bool hasNextLevel;
+  final VoidCallback onNextLevel;
+  final VoidCallback onRetry;
 
   const LevelCompleteOverlay({
     super.key,
     required this.coins,
     required this.time,
-    required this.onContinue,
+    required this.levelName,
+    required this.hasNextLevel,
+    required this.onNextLevel,
+    required this.onRetry,
   });
 
   @override
@@ -28,6 +34,15 @@ class LevelCompleteOverlay extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 fontFamily: 'monospace',
                 letterSpacing: 3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              levelName,
+              style: const TextStyle(
+                color: Color(0xFFBBBBBB),
+                fontSize: 20,
+                fontFamily: 'monospace',
               ),
             ),
             const SizedBox(height: 24),
@@ -49,22 +64,67 @@ class LevelCompleteOverlay extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 40),
-            ElevatedButton(
-              onPressed: onContinue,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00FF88),
-                foregroundColor: const Color(0xFF1a1a2e),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 48,
-                  vertical: 16,
+            if (hasNextLevel)
+              ElevatedButton(
+                onPressed: onNextLevel,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00FF88),
+                  foregroundColor: const Color(0xFF1a1a2e),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                child: const Text('NEXT LEVEL'),
+              ),
+            if (!hasNextLevel)
+              Column(
+                children: [
+                  const Text(
+                    'ALL LEVELS COMPLETE!',
+                    style: TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: onNextLevel,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD700),
+                      foregroundColor: const Color(0xFF1a1a2e),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 48,
+                        vertical: 16,
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    child: const Text('BACK TO MENU'),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'REPLAY LEVEL',
+                style: TextStyle(
+                  color: Color(0x99FFFFFF),
+                  fontSize: 16,
                   fontFamily: 'monospace',
                 ),
               ),
-              child: const Text('CONTINUE'),
             ),
           ],
         ),

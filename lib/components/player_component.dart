@@ -150,9 +150,12 @@ class PlayerComponent extends PositionComponent with HasGameReference {
     Sprite sprite;
     if (isSwinging) {
       sprite = _swingSheet!.getSpriteById(frameIndex);
+    } else if (isOnGround && _runSheet != null) {
+      // Use basic run sheet when on the ground
+      sprite = _runSheet!.getSpriteById(frameIndex);
     } else {
-      // Use hook spin sheet while running (shows hook spinning above head)
-      sprite = _hookSpinSheet!.getSpriteById(frameIndex);
+      // Use hook spin sheet while airborne (shows hook spinning above head)
+      sprite = (_hookSpinSheet ?? _runSheet)!.getSpriteById(frameIndex);
     }
 
     sprite.render(
