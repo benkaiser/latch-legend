@@ -57,6 +57,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     overlays.remove('gameOver');
     overlays.remove('levelComplete');
     overlays.remove('touchControls');
+    overlays.remove('pause');
 
     if (level != null) {
       currentLevel = level.clamp(0, levelCount - 1);
@@ -235,6 +236,8 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     }
 
     if (!player.isSwinging) {
+      player.isWallBlocked = false;  // reset each frame
+
       final px = player.position.x;
       final py = player.position.y;
       final halfW = player.size.x / 2 - 2;
@@ -266,26 +269,34 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
         }
       }
 
-      // Left wall collision
-      final leftX = px - halfW;
-      final leftCol = (leftX / ts).floor();
-      final rowT = ((py - halfH + 4) / ts).floor();
-      final rowB = ((py + halfH - 4) / ts).floor();
-      for (int r = rowT; r <= rowB; r++) {
-        if (levelData.isSolid(leftCol, r)) {
-          player.position.x = (leftCol + 1) * ts + halfW;
-          if (player.velocity.x < 0) player.velocity.x = 0;
-          break;
-        }
-      }
+      // Re-read position after vertical corrections
+      final px2 = player.position.x;
+      final py2 = player.position.y;
+
+      // Wall collision check rows — use a slightly inset range to avoid
+      // catching floor/ceiling tiles as walls
+      final rowT = ((py2 - halfH + 6) / ts).floor();
+      final rowB = ((py2 + halfH - 6) / ts).floor();
 
       // Right wall collision
-      final rightX = px + halfW;
+      final rightX = px2 + halfW;
       final rightCol = (rightX / ts).floor();
       for (int r = rowT; r <= rowB; r++) {
         if (levelData.isSolid(rightCol, r)) {
           player.position.x = rightCol * ts - halfW;
-          if (player.velocity.x > 0) player.velocity.x = 0;
+          player.velocity.x = 0;
+          player.isWallBlocked = true;
+          break;
+        }
+      }
+
+      // Left wall collision
+      final leftX = px2 - halfW;
+      final leftCol = (leftX / ts).floor();
+      for (int r = rowT; r <= rowB; r++) {
+        if (levelData.isSolid(leftCol, r)) {
+          player.position.x = (leftCol + 1) * ts + halfW;
+          if (player.velocity.x < 0) player.velocity.x = 0;
           break;
         }
       }

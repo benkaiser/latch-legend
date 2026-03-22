@@ -11,6 +11,7 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   Vector2 velocity = Vector2.zero();
   bool isOnGround = false;
   bool isSwinging = false;
+  bool isWallBlocked = false;  // true when pressed against a right wall
   Vector2? swingAnchor;
   double ropeLength = 0;
   double swingAngle = 0;
@@ -69,26 +70,28 @@ class PlayerComponent extends PositionComponent with HasGameReference {
       velocity.y = min(velocity.y, GameConstants.playerMaxFallSpeed);
 
       // Auto-run right at base speed, with momentum on top
-      // Base speed: always run right at playerRunSpeed
-      // Momentum from grapple: excess speed above runSpeed decays slowly
       final baseSpeed = GameConstants.playerRunSpeed;
 
-      if (velocity.x > baseSpeed) {
-        // We have momentum above base speed — decay it slowly
-        final decay = GameConstants.playerMomentumDecay * dt;
-        velocity.x = max(baseSpeed, velocity.x - decay);
-      } else {
-        // Below base speed — accelerate back up to it
-        velocity.x = min(baseSpeed, velocity.x + 400 * dt);
-      }
-
-      // Left/right input modifies speed slightly (optional)
+      // Left/right input overrides auto-run
       if (moveDirection < 0) {
-        // Slow down a bit
-        velocity.x = max(baseSpeed * 0.3, velocity.x - 200 * dt);
+        // Left held: actively decelerate and allow going backward
+        velocity.x -= 500 * dt;
+        velocity.x = velocity.x.clamp(-baseSpeed * 0.5, GameConstants.playerMaxSpeed);
+      } else if (isWallBlocked) {
+        // Blocked by a wall — don't auto-run into it, just stop
+        velocity.x = 0;
       } else if (moveDirection > 0) {
-        // Speed up slightly above base
-        velocity.x = min(GameConstants.playerMaxSpeed, velocity.x + 150 * dt);
+        // Right held: speed up above base
+        velocity.x += 300 * dt;
+        velocity.x = min(GameConstants.playerMaxSpeed, velocity.x);
+      } else {
+        // No input: auto-run toward base speed
+        if (velocity.x > baseSpeed) {
+          final decay = GameConstants.playerMomentumDecay * dt;
+          velocity.x = max(baseSpeed, velocity.x - decay);
+        } else if (velocity.x < baseSpeed) {
+          velocity.x = min(baseSpeed, velocity.x + 400 * dt);
+        }
       }
 
       // Clamp to max speed
