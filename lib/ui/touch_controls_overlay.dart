@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 /// On-screen touch controls for mobile/tablet.
-/// Left/Right arrows in bottom corners, top area for jump+grapple.
+/// Left/Right arrows in bottom-left, jump+grapple bottom-right,
+/// pause button top-right, top area tappable for jump+grapple.
 class TouchControlsOverlay extends StatelessWidget {
   final VoidCallback onLeftDown;
   final VoidCallback onLeftUp;
   final VoidCallback onRightDown;
   final VoidCallback onRightUp;
   final VoidCallback onJumpGrapple;
+  final VoidCallback onPause;
 
   const TouchControlsOverlay({
     super.key,
@@ -16,6 +18,7 @@ class TouchControlsOverlay extends StatelessWidget {
     required this.onRightDown,
     required this.onRightUp,
     required this.onJumpGrapple,
+    required this.onPause,
   });
 
   @override
@@ -33,6 +36,28 @@ class TouchControlsOverlay extends StatelessWidget {
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTapDown: (_) => onJumpGrapple(),
+            ),
+          ),
+
+          // Pause button — top-right
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: onPause,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0x33FFFFFF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.pause,
+                  color: Color(0x88FFFFFF),
+                  size: 22,
+                ),
+              ),
             ),
           ),
 
@@ -61,7 +86,7 @@ class TouchControlsOverlay extends StatelessWidget {
             ),
           ),
 
-          // Right arrow button — bottom-right-ish (next to left)
+          // Right arrow button
           Positioned(
             bottom: 20,
             left: 100,

@@ -18,7 +18,7 @@ import '../levels/level_registry.dart';
 import '../models/level_data.dart';
 import '../ui/hud_component.dart';
 
-enum GameState { menu, playing, gameOver, levelComplete }
+enum GameState { menu, playing, paused, gameOver, levelComplete }
 
 class LatchLegendGame extends FlameGame with KeyboardEvents {
   late PlayerComponent player;
@@ -175,30 +175,60 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     final ts = GameConstants.tileSize;
     player.isOnGround = false;
 
-    // Check if player is inside a solid tile while swinging — force detach
+    // Check if player is inside a solid tile while swinging — push out without detaching
     if (player.isSwinging) {
       final px = player.position.x;
       final py = player.position.y;
-      final halfW = player.size.x / 2 - 4;
-      final halfH = player.size.y / 2 - 4;
+      final halfW = player.size.x / 2 - 2;
+      final halfH = player.size.y / 2 - 2;
 
-      // Check corners of the player bounding box
-      final checkPoints = [
-        [px, py],                   // center
-        [px - halfW, py - halfH],   // top-left
-        [px + halfW, py - halfH],   // top-right
-        [px - halfW, py + halfH],   // bottom-left
-        [px + halfW, py + halfH],   // bottom-right
-      ];
+      // Floor check while swinging (most common: swinging into ground)
+      final feetRow = ((py + halfH) / ts).floor();
+      final colL = ((px - halfW) / ts).floor();
+      final colR = ((px + halfW) / ts).floor();
+      for (int c = colL; c <= colR; c++) {
+        if (levelData.isSolid(c, feetRow)) {
+          // Push up out of the floor
+          player.position.y = feetRow * ts - halfH;
+          // Shorten the rope so swing doesn't re-enter
+          if (player.swingAnchor != null) {
+            player.ropeLength = (player.position - player.swingAnchor!).length;
+          }
+          break;
+        }
+      }
 
-      for (final pt in checkPoints) {
-        final col = (pt[0] / ts).floor();
-        final row = (pt[1] / ts).floor();
-        if (levelData.isSolid(col, row)) {
-          // Player is inside a wall while swinging — detach and push out
+      // Right wall check while swinging
+      final rightCol = ((px + halfW) / ts).floor();
+      final rowT = ((py - halfH + 2) / ts).floor();
+      final rowB = ((py + halfH - 2) / ts).floor();
+      for (int r = rowT; r <= rowB; r++) {
+        if (levelData.isSolid(rightCol, r)) {
+          // Push left out of the wall and detach
+          player.position.x = rightCol * ts - halfW;
           player.detachFromGrapple();
-          // Push player to a safe position (back to where they were before this frame)
-          player.position.x = (col + 1) * ts + player.size.x / 2;
+          break;
+        }
+      }
+
+      // Left wall check while swinging
+      final leftCol = ((px - halfW) / ts).floor();
+      for (int r = rowT; r <= rowB; r++) {
+        if (levelData.isSolid(leftCol, r)) {
+          player.position.x = (leftCol + 1) * ts + halfW;
+          player.detachFromGrapple();
+          break;
+        }
+      }
+
+      // Ceiling check while swinging
+      final headRow = ((py - halfH) / ts).floor();
+      for (int c = colL; c <= colR; c++) {
+        if (levelData.isSolid(c, headRow)) {
+          player.position.y = (headRow + 1) * ts + halfH;
+          if (player.swingAnchor != null) {
+            player.ropeLength = (player.position - player.swingAnchor!).length;
+          }
           break;
         }
       }
@@ -393,6 +423,32 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     overlays.add('levelComplete');
   }
 
+  void pauseGame() {
+    if (state != GameState.playing) return;
+    state = GameState.paused;
+    overlays.remove('touchControls');
+    overlays.add('pause');
+  }
+
+  void resumeGame() {
+    if (state != GameState.paused) return;
+    state = GameState.playing;
+    overlays.remove('pause');
+    overlays.add('touchControls');
+  }
+
+  void quitToMenu() {
+    state = GameState.menu;
+    world.removeAll(world.children);
+    camera.viewport.removeAll(camera.viewport.children);
+    camera.backdrop.removeAll(camera.backdrop.children);
+    coins.clear();
+    currentLevel = 0;
+    overlays.remove('pause');
+    overlays.remove('touchControls');
+    overlays.add('menu');
+  }
+
   void nextLevel() {
     if (hasNextLevel) {
       currentLevel++;
@@ -439,22 +495,34 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
             (row + 1) * ts.toDouble(),
           );
 
+          // CRITICAL: hook point must be ABOVE the player
+          // Reject any point that's at or below player's head
+          if (hookPoint.y >= py - player.size.y / 2) break;
+
           // Check range
           final dist = (player.position - hookPoint).length;
           if (dist > GameConstants.hookRange) break;
           if (dist < 30) break; // too close
 
+          // Verify there's clear air between player and hook point
+          // (no solid tiles in the path)
+          bool pathClear = true;
+          final checkCol = (px / ts).floor(); // player's column
+          for (int checkRow = (py / ts).floor() - 1; checkRow > row; checkRow--) {
+            if (levelData.isSolid(checkCol, checkRow)) {
+              pathClear = false;
+              break;
+            }
+          }
+          if (!pathClear) break;
+
           // Score: prefer points that are far ahead and at a good swing angle
-          // A point directly above scores poorly (no forward momentum preserved)
-          // A point ahead-and-up scores best
           final dx = hookPoint.x - px;
           final dy = py - hookPoint.y; // positive = above
 
-          // We want the hook to be ahead (dx > 0) and above (dy > 0)
-          // Score by forward distance, penalize if too directly overhead
-          final forwardBonus = dx.clamp(0, 250); // reward being ahead
-          final heightPenalty = (dy > dist * 0.9) ? -100.0 : 0.0; // penalize nearly vertical
-          final distPenalty = dist * 0.1; // slightly prefer closer
+          final forwardBonus = dx.clamp(0, 250);
+          final heightPenalty = (dy > dist * 0.9) ? -100.0 : 0.0;
+          final distPenalty = dist * 0.1;
           final score = forwardBonus - distPenalty + heightPenalty;
 
           if (score > bestScore) {
@@ -527,6 +595,15 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
 
     // Jump+grapple on space or up press
     if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        if (state == GameState.playing) {
+          pauseGame();
+        } else if (state == GameState.paused) {
+          resumeGame();
+        }
+        return KeyEventResult.handled;
+      }
+
       if (event.logicalKey == LogicalKeyboardKey.space ||
           event.logicalKey == LogicalKeyboardKey.arrowUp) {
         handleJumpAndGrapple();

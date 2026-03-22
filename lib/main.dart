@@ -5,6 +5,7 @@ import 'game/latch_legend_game.dart';
 import 'ui/game_over_overlay.dart';
 import 'ui/level_complete_overlay.dart';
 import 'ui/menu_overlay.dart';
+import 'ui/pause_overlay.dart';
 import 'ui/touch_controls_overlay.dart';
 
 void main() {
@@ -41,12 +42,18 @@ class LatchLegendApp extends StatelessWidget {
                   onNextLevel: () => game.nextLevel(),
                   onRetry: () => game.startGame(),
                 ),
+            'pause': (context, _) => PauseOverlay(
+                  onResume: () => game.resumeGame(),
+                  onRetry: () => game.startGame(),
+                  onQuit: () => game.quitToMenu(),
+                ),
             'touchControls': (context, _) => TouchControlsOverlay(
                   onLeftDown: () => game.setLeftHeld(true),
                   onLeftUp: () => game.setLeftHeld(false),
                   onRightDown: () => game.setRightHeld(true),
                   onRightUp: () => game.setRightHeld(false),
                   onJumpGrapple: () => game.handleJumpAndGrapple(),
+                  onPause: () => game.pauseGame(),
                 ),
           },
         ),
