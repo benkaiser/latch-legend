@@ -94,8 +94,11 @@ class PlayerComponent extends PositionComponent with HasGameReference {
         }
       }
 
-      // Clamp to max speed
-      velocity.x = velocity.x.clamp(0, GameConstants.playerMaxSpeed);
+      // Clamp to max speed (allow negative for moving left)
+      velocity.x = velocity.x.clamp(
+        -GameConstants.playerRunSpeed * 0.5,
+        GameConstants.playerMaxSpeed,
+      );
 
       position += velocity * dt;
     } else if (swingAnchor != null) {

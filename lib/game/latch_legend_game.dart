@@ -243,11 +243,15 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
       final halfW = player.size.x / 2 - 2;
       final halfH = player.size.y / 2;
 
+      // Use a narrower width for floor/ceiling checks to avoid
+      // wall tiles being mistaken for floor/ceiling
+      final floorCheckHalfW = halfW - 4;
+
       // Floor collision: check tiles below player's feet
       final feetY = py + halfH;
       final feetRow = (feetY / ts).floor();
-      final colL = ((px - halfW) / ts).floor();
-      final colR = ((px + halfW) / ts).floor();
+      final colL = ((px - floorCheckHalfW) / ts).floor();
+      final colR = ((px + floorCheckHalfW) / ts).floor();
 
       for (int c = colL; c <= colR; c++) {
         if (levelData.isSolid(c, feetRow) && player.velocity.y >= 0) {
