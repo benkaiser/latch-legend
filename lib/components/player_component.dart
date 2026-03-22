@@ -19,7 +19,9 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   bool isDead = false;
 
   // Movement input: -1 = left, 0 = none, 1 = right
+  // Changes direction of auto-run and swing torque
   int moveDirection = 0;
+  int facingDirection = 1; // 1 = right, -1 = left
 
   // Animation
   double _animTime = 0;
@@ -69,34 +71,37 @@ class PlayerComponent extends PositionComponent with HasGameReference {
       velocity.y += GameConstants.gravity * dt;
       velocity.y = min(velocity.y, GameConstants.playerMaxFallSpeed);
 
-      // Auto-run right at base speed, with momentum on top
-      final baseSpeed = GameConstants.playerRunSpeed;
-
-      // Left/right input overrides auto-run
-      if (moveDirection < 0) {
-        // Left held: actively decelerate and allow going backward
-        velocity.x -= 500 * dt;
-        velocity.x = velocity.x.clamp(-baseSpeed * 0.5, GameConstants.playerMaxSpeed);
-      } else if (isWallBlocked) {
-        // Blocked by a wall — don't auto-run into it, just stop
-        velocity.x = 0;
-      } else if (moveDirection > 0) {
-        // Right held: speed up above base
-        velocity.x += 300 * dt;
-        velocity.x = min(GameConstants.playerMaxSpeed, velocity.x);
-      } else {
-        // No input: auto-run toward base speed
-        if (velocity.x > baseSpeed) {
-          final decay = GameConstants.playerMomentumDecay * dt;
-          velocity.x = max(baseSpeed, velocity.x - decay);
-        } else if (velocity.x < baseSpeed) {
-          velocity.x = min(baseSpeed, velocity.x + 400 * dt);
-        }
+      // Update facing direction from input
+      if (moveDirection != 0) {
+        facingDirection = moveDirection;
       }
 
-      // Clamp to max speed (allow negative for moving left)
+      // Auto-run in facing direction
+      final targetSpeed = GameConstants.playerRunSpeed * facingDirection;
+
+      if (isWallBlocked && velocity.x * facingDirection > 0) {
+        // Blocked by a wall in our facing direction — stop
+        velocity.x = 0;
+      } else if ((velocity.x - targetSpeed).abs() > 5) {
+        // Accelerate toward target speed
+        // Use faster accel when reversing direction, slower when above base speed (momentum)
+        final diff = targetSpeed - velocity.x;
+        final isAboveBase = velocity.x.abs() > GameConstants.playerRunSpeed;
+        final accel = isAboveBase
+            ? GameConstants.playerMomentumDecay  // slow decay from grapple momentum
+            : 500.0;  // fast direction change
+        if (diff > 0) {
+          velocity.x = min(targetSpeed, velocity.x + accel * dt);
+        } else {
+          velocity.x = max(targetSpeed, velocity.x - accel * dt);
+        }
+      } else {
+        velocity.x = targetSpeed;
+      }
+
+      // Clamp to max speed
       velocity.x = velocity.x.clamp(
-        -GameConstants.playerRunSpeed * 0.5,
+        -GameConstants.playerMaxSpeed,
         GameConstants.playerMaxSpeed,
       );
 
@@ -113,15 +118,9 @@ class PlayerComponent extends PositionComponent with HasGameReference {
           -(GameConstants.gravity / ropeLength) * sin(swingAngle);
       swingAngularVelocity += gravityTorque * dt;
 
-      // Always apply forward bias to keep momentum going right
+      // Always apply bias in facing direction to drive the swing
       swingAngularVelocity +=
-          (GameConstants.swingForwardBias * 0.5 / ropeLength) * dt;
-
-      // Player input adds extra swing torque
-      if (moveDirection != 0) {
-        swingAngularVelocity +=
-            (moveDirection * GameConstants.swingForwardBias / ropeLength) * dt;
-      }
+          (facingDirection * GameConstants.swingForwardBias * 0.7 / ropeLength) * dt;
 
       // Limit max downward swing angle — prevent swinging too far below anchor
       // swingAngle=0 means directly below anchor. Clamp to prevent going past ~70° behind

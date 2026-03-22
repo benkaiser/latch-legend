@@ -289,7 +289,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
         if (levelData.isSolid(rightCol, r)) {
           player.position.x = rightCol * ts - halfW;
           player.velocity.x = 0;
-          player.isWallBlocked = true;
+          if (player.facingDirection > 0) player.isWallBlocked = true;
           break;
         }
       }
@@ -300,7 +300,8 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
       for (int r = rowT; r <= rowB; r++) {
         if (levelData.isSolid(leftCol, r)) {
           player.position.x = (leftCol + 1) * ts + halfW;
-          if (player.velocity.x < 0) player.velocity.x = 0;
+          player.velocity.x = 0;
+          if (player.facingDirection < 0) player.isWallBlocked = true;
           break;
         }
       }
@@ -494,9 +495,12 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     Vector2? bestPoint;
     double bestScore = double.negativeInfinity;
 
-    // Scan columns from well ahead to slightly behind
-    // Heavy bias toward forward positions (100-200px ahead)
-    for (final offsetX in [120.0, 150.0, 90.0, 180.0, 60.0, 200.0, 40.0]) {
+    // Scan columns in the player's facing direction
+    final dir = player.facingDirection;
+    final offsets = [120.0, 150.0, 90.0, 180.0, 60.0, 200.0, 40.0];
+
+    for (final rawOffset in offsets) {
+      final offsetX = rawOffset * dir;
       final hookX = px + offsetX;
       final col = (hookX / ts).floor();
 
@@ -532,8 +536,8 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
           if (dist > GameConstants.hookRange) break;
           if (dist < 30) break; // too close
 
-          // Score: prefer points that are far ahead and at a good swing angle
-          final dx = hookPoint.x - px;
+          // Score: prefer points in the facing direction
+          final dx = (hookPoint.x - px) * dir; // positive = in facing direction
           final dy = py - hookPoint.y; // positive = above
 
           final forwardBonus = dx.clamp(0, 250);
