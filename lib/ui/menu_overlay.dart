@@ -106,7 +106,7 @@ class MenuOverlay extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Space / Tap to hook & release',
+              'Space / Tap = Hook & Release  •  Up = Jump',
               style: TextStyle(
                 color: Color(0x99FFFFFF),
                 fontSize: 14,

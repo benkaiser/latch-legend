@@ -17,6 +17,8 @@ class GameConstants {
 
   // Hook / Grapple
   static const double hookRange = 350.0;
+  static const double hookShootSpeed = 900.0; // speed of the hook projectile
+  static const double hookWhiffDuration = 0.3; // how long the "miss" animation shows
   static const double ropeReelSpeed = 120.0;
   static const double ropeMinLength = 40.0;
   static const double swingBoostMultiplier = 1.4;

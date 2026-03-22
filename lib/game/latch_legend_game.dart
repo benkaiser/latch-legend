@@ -151,6 +151,35 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     final ts = GameConstants.tileSize;
     player.isOnGround = false;
 
+    // Check if player is inside a solid tile while swinging — force detach
+    if (player.isSwinging) {
+      final px = player.position.x;
+      final py = player.position.y;
+      final halfW = player.size.x / 2 - 4;
+      final halfH = player.size.y / 2 - 4;
+
+      // Check corners of the player bounding box
+      final checkPoints = [
+        [px, py],                   // center
+        [px - halfW, py - halfH],   // top-left
+        [px + halfW, py - halfH],   // top-right
+        [px - halfW, py + halfH],   // bottom-left
+        [px + halfW, py + halfH],   // bottom-right
+      ];
+
+      for (final pt in checkPoints) {
+        final col = (pt[0] / ts).floor();
+        final row = (pt[1] / ts).floor();
+        if (levelData.isSolid(col, row)) {
+          // Player is inside a wall while swinging — detach and push out
+          player.detachFromGrapple();
+          // Push player to a safe position (back to where they were before this frame)
+          player.position.x = (col + 1) * ts + player.size.x / 2;
+          break;
+        }
+      }
+    }
+
     if (!player.isSwinging) {
       final px = player.position.x;
       final py = player.position.y;
@@ -336,8 +365,10 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     }
   }
 
-  // --- Ceiling hook: raycast upward to find solid tile above player ---
-  // Scans multiple columns ahead for the best hook point
+  // --- Ceiling hook: raycast forward-and-up to find best hook point ---
+  // Searches columns well ahead of the player to maintain momentum.
+  // Strongly prefers points that are forward and diagonally up,
+  // not directly overhead (which kills forward speed).
 
   Vector2? _findCeilingHookPoint() {
     final ts = GameConstants.tileSize;
@@ -345,10 +376,11 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     final py = player.position.y;
 
     Vector2? bestPoint;
-    double bestDist = double.infinity;
+    double bestScore = double.negativeInfinity;
 
-    // Scan columns from slightly behind to well ahead of player
-    for (final offsetX in [30.0, 60.0, 0.0, 90.0, -10.0]) {
+    // Scan columns from well ahead to slightly behind
+    // Heavy bias toward forward positions (100-200px ahead)
+    for (final offsetX in [120.0, 150.0, 90.0, 180.0, 60.0, 200.0, 40.0]) {
       final hookX = px + offsetX;
       final col = (hookX / ts).floor();
 
@@ -365,11 +397,23 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
           // Check range
           final dist = (player.position - hookPoint).length;
           if (dist > GameConstants.hookRange) break;
-          if (dist < 20) break; // too close
+          if (dist < 30) break; // too close
 
-          // Prefer hooks ahead of the player and closer
-          if (dist < bestDist) {
-            bestDist = dist;
+          // Score: prefer points that are far ahead and at a good swing angle
+          // A point directly above scores poorly (no forward momentum preserved)
+          // A point ahead-and-up scores best
+          final dx = hookPoint.x - px;
+          final dy = py - hookPoint.y; // positive = above
+
+          // We want the hook to be ahead (dx > 0) and above (dy > 0)
+          // Score by forward distance, penalize if too directly overhead
+          final forwardBonus = dx.clamp(0, 250); // reward being ahead
+          final heightPenalty = (dy > dist * 0.9) ? -100.0 : 0.0; // penalize nearly vertical
+          final distPenalty = dist * 0.1; // slightly prefer closer
+          final score = forwardBonus - distPenalty + heightPenalty;
+
+          if (score > bestScore) {
+            bestScore = score;
             bestPoint = hookPoint;
           }
           break;
@@ -390,6 +434,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
       return;
     }
 
+    // Try to grapple first
     final hookPoint = _findCeilingHookPoint();
     if (hookPoint != null) {
       player.attachToGrapple(hookPoint);
@@ -402,8 +447,25 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
         lifetime: 0.3,
       ));
     } else {
+      // No ceiling in range — show whiff animation (hook shoots up and misses)
+      if (!hookChain.isWhiffing) {
+        hookChain.startWhiff(player.position);
+      }
+      // Fallback to jump when no hook available
       player.jump();
     }
+  }
+
+  void _handleJump() {
+    if (state != GameState.playing) return;
+
+    if (player.isSwinging) {
+      // Release from grapple when jump is pressed during swing
+      player.detachFromGrapple();
+      return;
+    }
+
+    player.jump();
   }
 
   @override
@@ -418,9 +480,13 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   ) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    if (event.logicalKey == LogicalKeyboardKey.space ||
-        event.logicalKey == LogicalKeyboardKey.arrowUp) {
+    if (event.logicalKey == LogicalKeyboardKey.space) {
       _handleGrappleOrJump();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _handleJump();
       return KeyEventResult.handled;
     }
 
