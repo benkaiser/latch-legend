@@ -3,7 +3,7 @@ import 'package:flame/components.dart';
 import 'dart:ui';
 import '../config/game_constants.dart';
 
-/// Dark cave background with vertical rock streaks (Hook Champ style).
+/// Dark cave background with vertical rock streaks.
 /// Parallax driven by cameraX set externally.
 class BackgroundComponent extends PositionComponent with HasGameReference {
   double cameraX = 0;

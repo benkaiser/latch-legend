@@ -35,7 +35,7 @@ class GameConstants {
   static const double wallOfDeathStartDelay = 3.0;
 
   // Coins
-  static const double coinSize = 10.0;             // smaller like Hook Champ
+  static const double coinSize = 10.0;
   static const double coinCollectRadius = 20.0;
   static const double coinBobAmplitude = 3.0;
   static const double coinBobSpeed = 3.0;
@@ -49,7 +49,7 @@ class GameConstants {
   static const double cameraLookAheadY = 0.0;
   static const double cameraSmoothSpeed = 6.0;
 
-  // Colors — DARK cave theme (matching Hook Champ's oppressive atmosphere)
+  // Colors — DARK cave theme
   // Background: near-black
   static const Color caveBackground = Color(0xFF050404);
   static const Color caveBgMid = Color(0xFF0a0806);
@@ -60,10 +60,10 @@ class GameConstants {
   static const Color tileColor = Color(0xFF2a1c12);
   static const Color tileBorder = Color(0xFF1a1008);
   static const Color tileHighlight = Color(0xFF3a2818);
-  // Edge highlights: reddish-brown "crust" at ceiling like Hook Champ
+  // Edge highlights: reddish-brown "crust" at ceiling
   static const Color tileFloorTop = Color(0xFF4a3828);
   static const Color tileCeilBottom = Color(0xFF5a3020);  // reddish-brown crust
-  // Hook/rope: thin white like Hook Champ
+  // Hook/rope: thin white
   static const Color grappleColor = Color(0xFFCCCCCC);
   static const Color grappleActiveColor = Color(0xFFFFD700);
   static const Color ropeColor = Color(0xFFDDDDDD);       // near-white, thin

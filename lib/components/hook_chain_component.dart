@@ -12,7 +12,7 @@ class HookChainComponent extends Component {
   Vector2 _whiffStart = Vector2.zero();
   Vector2 _whiffEnd = Vector2.zero();
 
-  // Thin white rope like Hook Champ — 1px line, very clean
+  // Thin white rope — 1px line, very clean
   static final Paint _ropePaint = Paint()
     ..color = GameConstants.ropeColor
     ..strokeWidth = 1.5

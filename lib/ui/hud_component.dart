@@ -1,7 +1,7 @@
 import 'package:flame/components.dart';
 import 'package:flutter/rendering.dart';
 
-/// Minimal in-game HUD — Hook Champ style: almost invisible during gameplay.
+/// Minimal in-game HUD — almost invisible during gameplay.
 /// Only shows a tiny coin count. Level name fades out after 2 seconds.
 class HudComponent extends PositionComponent with HasGameReference {
   int coins = 0;
