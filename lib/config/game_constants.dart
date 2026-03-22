@@ -12,16 +12,15 @@ class GameConstants {
   static const double playerWidth = 24.0;
   static const double playerHeight = 28.0;
   static const double playerRunSpeed = 200.0;
-  static const double playerAcceleration = 600.0;  // how fast player reaches run speed
-  static const double playerDeceleration = 400.0;  // how fast player slows without input
-  static const double playerMaxSpeed = 400.0;       // max horizontal speed (with momentum)
+  static const double playerMaxSpeed = 500.0;       // max horizontal speed (with momentum)
   static const double playerJumpForce = -420.0;
   static const double playerMaxFallSpeed = 600.0;
+  static const double playerMomentumDecay = 80.0;    // px/s² decay back toward run speed
 
   // Hook / Grapple
   static const double hookRange = 350.0;
-  static const double hookShootSpeed = 900.0; // speed of the hook projectile
-  static const double hookWhiffDuration = 0.3; // how long the "miss" animation shows
+  static const double hookShootSpeed = 900.0;
+  static const double hookWhiffDuration = 0.3;
   static const double ropeReelSpeed = 120.0;
   static const double ropeMinLength = 40.0;
   static const double swingBoostMultiplier = 1.4;
@@ -34,36 +33,49 @@ class GameConstants {
   static const double wallOfDeathStartDelay = 3.0;
 
   // Coins
-  static const double coinSize = 16.0;
-  static const double coinCollectRadius = 24.0;
-  static const double coinBobAmplitude = 4.0;
+  static const double coinSize = 10.0;             // smaller like Hook Champ
+  static const double coinCollectRadius = 20.0;
+  static const double coinBobAmplitude = 3.0;
   static const double coinBobSpeed = 3.0;
 
-  // Camera
-  static const double cameraLookAheadX = 150.0;
-  static const double cameraLookAheadY = 50.0;
-  static const double cameraSmoothSpeed = 5.0;
+  // Speed trail
+  static const double speedTrailThreshold = 250.0;  // min speed to show trail
+  static const double speedTrailInterval = 0.03;     // seconds between trail particles
 
-  // Colors — dark cave theme
-  static const Color caveBackground = Color(0xFF0e0a06);
-  static const Color caveBgMid = Color(0xFF1a1209);
-  static const Color caveWallDark = Color(0xFF1e1409);
-  static const Color caveWallMid = Color(0xFF2a1c10);
-  static const Color tileColor = Color(0xFF4a3520);
-  static const Color tileBorder = Color(0xFF2e1f12);
-  static const Color tileHighlight = Color(0xFF6a5040);
-  static const Color tileFloorTop = Color(0xFF7a6050);
-  static const Color tileCeilBottom = Color(0xFF5a4535);
-  static const Color grappleColor = Color(0xFF999999);
+  // Camera — lead further ahead like Hook Champ
+  static const double cameraLookAheadX = 220.0;
+  static const double cameraLookAheadY = 30.0;
+  static const double cameraSmoothSpeed = 4.0;
+
+  // Colors — DARK cave theme (matching Hook Champ's oppressive atmosphere)
+  // Background: near-black
+  static const Color caveBackground = Color(0xFF050404);
+  static const Color caveBgMid = Color(0xFF0a0806);
+  // Parallax rock streaks: very dark gray
+  static const Color caveWallDark = Color(0xFF0f0c0a);
+  static const Color caveWallMid = Color(0xFF161210);
+  // Tiles: dark brown, much darker than before
+  static const Color tileColor = Color(0xFF2a1c12);
+  static const Color tileBorder = Color(0xFF1a1008);
+  static const Color tileHighlight = Color(0xFF3a2818);
+  // Edge highlights: reddish-brown "crust" at ceiling like Hook Champ
+  static const Color tileFloorTop = Color(0xFF4a3828);
+  static const Color tileCeilBottom = Color(0xFF5a3020);  // reddish-brown crust
+  // Hook/rope: thin white like Hook Champ
+  static const Color grappleColor = Color(0xFFCCCCCC);
   static const Color grappleActiveColor = Color(0xFFFFD700);
+  static const Color ropeColor = Color(0xFFDDDDDD);       // near-white, thin
+  // Coins: bright gold that pops against dark background
   static const Color coinColor = Color(0xFFFFD700);
   static const Color coinHighlight = Color(0xFFFFF8DC);
+  // Player
   static const Color playerShirt = Color(0xFF4488CC);
   static const Color playerPants = Color(0xFF5C4033);
   static const Color playerSkin = Color(0xFFFFCCA0);
   static const Color playerHat = Color(0xFF8B6914);
-  static const Color ropeColor = Color(0xFFCCBB88);
-  static const Color wallOfDeathColor = Color(0xFF330000);
+  // Wall of death
+  static const Color wallOfDeathColor = Color(0xFF220000);
   static const Color wallOfDeathEye = Color(0xFFFF0000);
+  // Exit
   static const Color exitColor = Color(0xFFDDCCAA);
 }

@@ -68,29 +68,31 @@ class PlayerComponent extends PositionComponent with HasGameReference {
       velocity.y += GameConstants.gravity * dt;
       velocity.y = min(velocity.y, GameConstants.playerMaxFallSpeed);
 
-      // Horizontal movement — player-controlled, momentum preserved
-      if (moveDirection != 0) {
-        // Accelerate in the input direction
-        velocity.x += moveDirection * GameConstants.playerAcceleration * dt;
+      // Auto-run right at base speed, with momentum on top
+      // Base speed: always run right at playerRunSpeed
+      // Momentum from grapple: excess speed above runSpeed decays slowly
+      final baseSpeed = GameConstants.playerRunSpeed;
+
+      if (velocity.x > baseSpeed) {
+        // We have momentum above base speed — decay it slowly
+        final decay = GameConstants.playerMomentumDecay * dt;
+        velocity.x = max(baseSpeed, velocity.x - decay);
       } else {
-        // No input: apply light deceleration (preserves grapple momentum!)
-        if (velocity.x.abs() > 10) {
-          final decel = GameConstants.playerDeceleration * dt;
-          if (velocity.x > 0) {
-            velocity.x = max(0, velocity.x - decel);
-          } else {
-            velocity.x = min(0, velocity.x + decel);
-          }
-        } else {
-          velocity.x = 0;
-        }
+        // Below base speed — accelerate back up to it
+        velocity.x = min(baseSpeed, velocity.x + 400 * dt);
+      }
+
+      // Left/right input modifies speed slightly (optional)
+      if (moveDirection < 0) {
+        // Slow down a bit
+        velocity.x = max(baseSpeed * 0.3, velocity.x - 200 * dt);
+      } else if (moveDirection > 0) {
+        // Speed up slightly above base
+        velocity.x = min(GameConstants.playerMaxSpeed, velocity.x + 150 * dt);
       }
 
       // Clamp to max speed
-      velocity.x = velocity.x.clamp(
-        -GameConstants.playerMaxSpeed,
-        GameConstants.playerMaxSpeed,
-      );
+      velocity.x = velocity.x.clamp(0, GameConstants.playerMaxSpeed);
 
       position += velocity * dt;
     } else if (swingAnchor != null) {

@@ -10,6 +10,7 @@ import '../components/exit_component.dart';
 import '../components/hook_chain_component.dart';
 import '../components/particle_burst_component.dart';
 import '../components/player_component.dart';
+import '../components/speed_trail_component.dart';
 import '../components/tile_map_component.dart';
 import '../components/wall_of_death_component.dart';
 import '../config/game_constants.dart';
@@ -32,6 +33,9 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
   // Held keys tracking for continuous movement
   bool _leftHeld = false;
   bool _rightHeld = false;
+
+  // Speed trail
+  double _speedTrailTimer = 0;
 
   GameState state = GameState.menu;
   int coinsCollected = 0;
@@ -158,6 +162,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     _updateHookChain();
     _updateCamera(dt);
     _updateHud();
+    _updateSpeedTrail(dt);
     _updateBackground();
     _checkWallOfDeath();
     _checkExit();
@@ -324,6 +329,24 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
 
   void _updateBackground() {
     background.cameraX = camera.viewfinder.position.x;
+  }
+
+  // --- Speed trail ---
+
+  void _updateSpeedTrail(double dt) {
+    final speed = player.velocity.length;
+    if (speed < GameConstants.speedTrailThreshold) return;
+
+    _speedTrailTimer += dt;
+    if (_speedTrailTimer >= GameConstants.speedTrailInterval) {
+      _speedTrailTimer = 0;
+      world.add(SpeedTrailComponent(
+        pos: Vector2(
+          player.position.x - player.size.x / 2,
+          player.position.y,
+        ),
+      ));
+    }
   }
 
   // --- Win/lose ---
