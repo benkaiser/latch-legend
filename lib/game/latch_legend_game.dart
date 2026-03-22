@@ -489,32 +489,33 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
       final startRow = (py / ts).floor();
       for (int row = startRow - 1; row >= 0; row--) {
         if (levelData.isSolid(col, row)) {
-          // Found ceiling — hook attaches to the bottom center of this tile
+          // Found solid tile — hook attaches to the bottom center
+          final hookRow = row + 1;
           final hookPoint = Vector2(
             col * ts + ts / 2,
-            (row + 1) * ts.toDouble(),
+            hookRow * ts.toDouble(),
           );
 
-          // CRITICAL: hook point must be ABOVE the player
-          // Reject any point that's at or below player's head
-          if (hookPoint.y >= py - player.size.y / 2) break;
+          // CRITICAL: hook point must be ABOVE the player's center
+          if (hookPoint.y >= py) break;
+
+          // CRITICAL: there must be enough open air below the hook point
+          // to actually swing. Check that at least 3 tiles below the hook
+          // point are air — if not, this is a floor surface, not a ceiling.
+          int airBelow = 0;
+          for (int checkRow = hookRow; checkRow < hookRow + 4 && checkRow < levelData.height; checkRow++) {
+            if (!levelData.isSolid(col, checkRow)) {
+              airBelow++;
+            } else {
+              break;
+            }
+          }
+          if (airBelow < 3) break; // not enough room to swing — it's a floor, not a ceiling
 
           // Check range
           final dist = (player.position - hookPoint).length;
           if (dist > GameConstants.hookRange) break;
           if (dist < 30) break; // too close
-
-          // Verify there's clear air between player and hook point
-          // (no solid tiles in the path)
-          bool pathClear = true;
-          final checkCol = (px / ts).floor(); // player's column
-          for (int checkRow = (py / ts).floor() - 1; checkRow > row; checkRow--) {
-            if (levelData.isSolid(checkCol, checkRow)) {
-              pathClear = false;
-              break;
-            }
-          }
-          if (!pathClear) break;
 
           // Score: prefer points that are far ahead and at a good swing angle
           final dx = hookPoint.x - px;
