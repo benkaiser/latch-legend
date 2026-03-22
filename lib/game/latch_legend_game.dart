@@ -19,7 +19,7 @@ import '../ui/hud_component.dart';
 
 enum GameState { menu, playing, gameOver, levelComplete }
 
-class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
+class LatchLegendGame extends FlameGame with KeyboardEvents {
   late PlayerComponent player;
   late WallOfDeathComponent wallOfDeath;
   late HookChainComponent hookChain;
@@ -28,6 +28,10 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   late TileMapComponent tileMap;
 
   final List<CoinComponent> coins = [];
+
+  // Held keys tracking for continuous movement
+  bool _leftHeld = false;
+  bool _rightHeld = false;
 
   GameState state = GameState.menu;
   int coinsCollected = 0;
@@ -48,6 +52,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     overlays.remove('menu');
     overlays.remove('gameOver');
     overlays.remove('levelComplete');
+    overlays.remove('touchControls');
 
     if (level != null) {
       currentLevel = level.clamp(0, levelCount - 1);
@@ -61,6 +66,8 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     coins.clear();
     coinsCollected = 0;
     playTime = 0;
+    _leftHeld = false;
+    _rightHeld = false;
 
     // Load level
     levelData = levels[currentLevel].builder();
@@ -124,6 +131,9 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     );
 
     state = GameState.playing;
+
+    // Show touch controls
+    overlays.add('touchControls');
   }
 
   // --- Update ---
@@ -134,6 +144,15 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     super.update(dt);
 
     playTime += dt;
+
+    // Update player move direction from held keys
+    if (_leftHeld && !_rightHeld) {
+      player.moveDirection = -1;
+    } else if (_rightHeld && !_leftHeld) {
+      player.moveDirection = 1;
+    } else {
+      player.moveDirection = 0;
+    }
 
     _handleTileCollisions();
     _updateHookChain();
@@ -340,12 +359,14 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
   void _gameOver() {
     state = GameState.gameOver;
     player.isDead = true;
+    overlays.remove('touchControls');
     overlays.add('gameOver');
   }
 
   void _levelComplete() {
     state = GameState.levelComplete;
     player.isDead = true;
+    overlays.remove('touchControls');
     overlays.add('levelComplete');
   }
 
@@ -361,6 +382,7 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
       coins.clear();
       currentLevel = 0;
       state = GameState.menu;
+      overlays.remove('touchControls');
       overlays.add('menu');
     }
   }
@@ -426,15 +448,22 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
 
   // --- Input ---
 
-  void _handleGrappleOrJump() {
+  /// Combined jump + grapple: always jump first,
+  /// then also grapple if a ceiling is in range.
+  /// If no ceiling, the hook shoots up and whiffs visually.
+  void handleJumpAndGrapple() {
     if (state != GameState.playing) return;
 
     if (player.isSwinging) {
+      // Release from grapple
       player.detachFromGrapple();
       return;
     }
 
-    // Try to grapple first
+    // Always jump if on ground
+    player.jump();
+
+    // Also try to grapple
     final hookPoint = _findCeilingHookPoint();
     if (hookPoint != null) {
       player.attachToGrapple(hookPoint);
@@ -451,26 +480,17 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
       if (!hookChain.isWhiffing) {
         hookChain.startWhiff(player.position);
       }
-      // Fallback to jump when no hook available
-      player.jump();
     }
   }
 
-  void _handleJump() {
-    if (state != GameState.playing) return;
-
-    if (player.isSwinging) {
-      // Release from grapple when jump is pressed during swing
-      player.detachFromGrapple();
-      return;
-    }
-
-    player.jump();
+  /// Touch/external: set left movement
+  void setLeftHeld(bool held) {
+    _leftHeld = held;
   }
 
-  @override
-  void onTapDown(TapDownEvent event) {
-    _handleGrappleOrJump();
+  /// Touch/external: set right movement
+  void setRightHeld(bool held) {
+    _rightHeld = held;
   }
 
   @override
@@ -478,15 +498,21 @@ class LatchLegendGame extends FlameGame with TapCallbacks, KeyboardEvents {
     KeyEvent event,
     Set<LogicalKeyboardKey> keysPressed,
   ) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // Track held state for left/right
+    _leftHeld = keysPressed.contains(LogicalKeyboardKey.arrowLeft);
+    _rightHeld = keysPressed.contains(LogicalKeyboardKey.arrowRight);
 
-    if (event.logicalKey == LogicalKeyboardKey.space) {
-      _handleGrappleOrJump();
-      return KeyEventResult.handled;
+    // Jump+grapple on space or up press
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.space ||
+          event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        handleJumpAndGrapple();
+        return KeyEventResult.handled;
+      }
     }
 
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      _handleJump();
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        event.logicalKey == LogicalKeyboardKey.arrowRight) {
       return KeyEventResult.handled;
     }
 

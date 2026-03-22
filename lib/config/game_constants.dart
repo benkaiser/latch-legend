@@ -12,6 +12,9 @@ class GameConstants {
   static const double playerWidth = 24.0;
   static const double playerHeight = 28.0;
   static const double playerRunSpeed = 200.0;
+  static const double playerAcceleration = 600.0;  // how fast player reaches run speed
+  static const double playerDeceleration = 400.0;  // how fast player slows without input
+  static const double playerMaxSpeed = 400.0;       // max horizontal speed (with momentum)
   static const double playerJumpForce = -420.0;
   static const double playerMaxFallSpeed = 600.0;
 

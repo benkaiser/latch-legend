@@ -17,6 +17,9 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   double swingAngularVelocity = 0;
   bool isDead = false;
 
+  // Movement input: -1 = left, 0 = none, 1 = right
+  int moveDirection = 0;
+
   // Animation
   double _animTime = 0;
   SpriteSheet? _runSheet;
@@ -48,7 +51,6 @@ class PlayerComponent extends PositionComponent with HasGameReference {
 
       _spritesLoaded = true;
     } catch (_) {
-      // Fallback to drawn sprites if images fail
       _spritesLoaded = false;
     }
   }
@@ -62,10 +64,34 @@ class PlayerComponent extends PositionComponent with HasGameReference {
     _hookSpinAngle += dt * 8; // spin speed
 
     if (!isSwinging) {
-      // Normal movement: gravity + auto-run
+      // Gravity
       velocity.y += GameConstants.gravity * dt;
       velocity.y = min(velocity.y, GameConstants.playerMaxFallSpeed);
-      velocity.x = GameConstants.playerRunSpeed;
+
+      // Horizontal movement — player-controlled, momentum preserved
+      if (moveDirection != 0) {
+        // Accelerate in the input direction
+        velocity.x += moveDirection * GameConstants.playerAcceleration * dt;
+      } else {
+        // No input: apply light deceleration (preserves grapple momentum!)
+        if (velocity.x.abs() > 10) {
+          final decel = GameConstants.playerDeceleration * dt;
+          if (velocity.x > 0) {
+            velocity.x = max(0, velocity.x - decel);
+          } else {
+            velocity.x = min(0, velocity.x + decel);
+          }
+        } else {
+          velocity.x = 0;
+        }
+      }
+
+      // Clamp to max speed
+      velocity.x = velocity.x.clamp(
+        -GameConstants.playerMaxSpeed,
+        GameConstants.playerMaxSpeed,
+      );
+
       position += velocity * dt;
     } else if (swingAnchor != null) {
       // Rope auto-retracts
@@ -79,9 +105,11 @@ class PlayerComponent extends PositionComponent with HasGameReference {
           -(GameConstants.gravity / ropeLength) * sin(swingAngle);
       swingAngularVelocity += gravityTorque * dt;
 
-      // Forward bias
-      swingAngularVelocity +=
-          (GameConstants.swingForwardBias / ropeLength) * dt;
+      // Player input affects swing: pressing in the swing direction adds torque
+      if (moveDirection != 0) {
+        swingAngularVelocity +=
+            (moveDirection * GameConstants.swingForwardBias / ropeLength) * dt;
+      }
 
       // Light damping
       swingAngularVelocity *= pow(0.997, dt * 60).toDouble();
@@ -109,6 +137,7 @@ class PlayerComponent extends PositionComponent with HasGameReference {
     final diff = position - anchor;
     swingAngle = atan2(diff.x, diff.y);
 
+    // Convert current velocity to angular velocity — this preserves momentum!
     final tangentialSpeed = velocity.x * cos(swingAngle) - velocity.y * sin(swingAngle);
     swingAngularVelocity = tangentialSpeed / ropeLength;
   }
@@ -116,17 +145,21 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   void detachFromGrapple() {
     if (!isSwinging) return;
 
+    // Convert angular velocity back to linear — preserve ALL the swing momentum
     final speed = swingAngularVelocity * ropeLength;
     velocity.x = speed * cos(swingAngle);
     velocity.y = -speed * sin(swingAngle);
 
+    // Boost if releasing during a forward swing
     if (swingAngularVelocity > 0) {
       velocity.x *= GameConstants.swingBoostMultiplier;
       velocity.y -= 80 + (swingAngularVelocity * ropeLength * 0.3).abs();
     }
 
-    if (velocity.x < GameConstants.playerRunSpeed) {
-      velocity.x = GameConstants.playerRunSpeed;
+    // Don't clamp to run speed anymore — let momentum carry!
+    // Only ensure we're not going backwards
+    if (velocity.x < 0) {
+      velocity.x = 0;
     }
 
     isSwinging = false;
