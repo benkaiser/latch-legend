@@ -26,6 +26,8 @@ class TileMapComponent extends PositionComponent with HasGameReference {
   static final Paint _ceilPaint = Paint()..color = GameConstants.tileCeilBottom;
   static final Paint _floorPaint = Paint()..color = GameConstants.tileFloorTop;
   static final Paint _highlightPaint = Paint()..color = GameConstants.tileHighlight;
+  static final Paint _spikePaint = Paint()..color = const Color(0xFF8B0000);
+  static final Paint _spikeHighlightPaint = Paint()..color = const Color(0xFFCC2222);
 
   TileMapComponent({required this.level})
       : super(
@@ -76,6 +78,10 @@ class TileMapComponent extends PositionComponent with HasGameReference {
     for (int row = startRow; row <= endRow; row++) {
       for (int col = startCol; col <= endCol; col++) {
         final tile = level.grid[row][col];
+        if (tile == TileType.spike) {
+          _renderSpike(canvas, col * ts, row * ts, ts);
+          continue;
+        }
         if (tile != TileType.solid) continue;
 
         final x = col * ts;
@@ -116,6 +122,27 @@ class TileMapComponent extends PositionComponent with HasGameReference {
     }
     if (airAbove) {
       canvas.drawRect(Rect.fromLTWH(x, y, ts, 2), _floorPaint);
+    }
+  }
+
+  void _renderSpike(Canvas canvas, double x, double y, double ts) {
+    // Draw 3 triangular spikes pointing up within the tile
+    final spikeW = ts / 3;
+    for (int i = 0; i < 3; i++) {
+      final sx = x + i * spikeW;
+      final path = Path()
+        ..moveTo(sx, y + ts)           // bottom-left
+        ..lineTo(sx + spikeW / 2, y + 4) // tip
+        ..lineTo(sx + spikeW, y + ts)  // bottom-right
+        ..close();
+      canvas.drawPath(path, _spikePaint);
+      // Highlight on left edge
+      final hlPath = Path()
+        ..moveTo(sx, y + ts)
+        ..lineTo(sx + spikeW / 2, y + 4)
+        ..lineTo(sx + spikeW * 0.3, y + ts)
+        ..close();
+      canvas.drawPath(hlPath, _spikeHighlightPaint);
     }
   }
 

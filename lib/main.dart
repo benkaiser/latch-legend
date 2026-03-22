@@ -1,5 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'game/latch_legend_game.dart';
 import 'ui/game_over_overlay.dart';
@@ -9,6 +10,8 @@ import 'ui/pause_overlay.dart';
 import 'ui/touch_controls_overlay.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const LatchLegendApp());
 }
 
@@ -52,7 +55,8 @@ class LatchLegendApp extends StatelessWidget {
                   onLeftUp: () => game.setLeftHeld(false),
                   onRightDown: () => game.setRightHeld(true),
                   onRightUp: () => game.setRightHeld(false),
-                  onJumpGrapple: () => game.handleJumpAndGrapple(),
+                  onGrappleStart: (screenPos) => game.handleGrappleStart(screenPos: screenPos),
+                  onGrappleRelease: () => game.handleGrappleRelease(),
                   onPause: () => game.pauseGame(),
                 ),
           },

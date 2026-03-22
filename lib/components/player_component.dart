@@ -4,6 +4,7 @@ import 'package:flame/flame.dart';
 import 'package:flame/sprite.dart';
 import 'dart:ui';
 import '../config/game_constants.dart';
+import '../models/rope_state.dart';
 
 enum PlayerState { running, swinging }
 
@@ -12,11 +13,12 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   bool isOnGround = false;
   bool isSwinging = false;
   bool isWallBlocked = false;  // true when pressed against a right wall
-  Vector2? swingAnchor;
-  double ropeLength = 0;
+  RopeState? rope;
   double swingAngle = 0;
   double swingAngularVelocity = 0;
   bool isDead = false;
+  Vector2? prevSwingPos; // track last frame position for wrap detection
+  double swingTime = 0; // time since grapple attached — grace period for wrapping
 
   // Movement input: -1 = left, 0 = none, 1 = right
   // Changes direction of auto-run and swing torque
@@ -76,27 +78,32 @@ class PlayerComponent extends PositionComponent with HasGameReference {
         facingDirection = moveDirection;
       }
 
-      // Auto-run in facing direction
-      final targetSpeed = GameConstants.playerRunSpeed * facingDirection;
-
-      if (isWallBlocked && velocity.x * facingDirection > 0) {
-        // Blocked by a wall in our facing direction — stop
-        velocity.x = 0;
-      } else if ((velocity.x - targetSpeed).abs() > 5) {
-        // Accelerate toward target speed
-        // Use faster accel when reversing direction, slower when above base speed (momentum)
-        final diff = targetSpeed - velocity.x;
-        final isAboveBase = velocity.x.abs() > GameConstants.playerRunSpeed;
-        final accel = isAboveBase
-            ? GameConstants.playerMomentumDecay  // slow decay from grapple momentum
-            : 500.0;  // fast direction change
-        if (diff > 0) {
-          velocity.x = min(targetSpeed, velocity.x + accel * dt);
+      if (isOnGround) {
+        // Ground movement: only move when input is held, rapid deceleration otherwise
+        if (moveDirection != 0) {
+          final targetSpeed = GameConstants.playerRunSpeed * moveDirection;
+          final diff = targetSpeed - velocity.x;
+          if (diff.abs() > 5) {
+            final accel = 500.0;
+            if (diff > 0) {
+              velocity.x = min(targetSpeed, velocity.x + accel * dt);
+            } else {
+              velocity.x = max(targetSpeed, velocity.x - accel * dt);
+            }
+          } else {
+            velocity.x = targetSpeed;
+          }
         } else {
-          velocity.x = max(targetSpeed, velocity.x - accel * dt);
+          // No input — rapid ground friction
+          final friction = GameConstants.groundFriction * dt;
+          if (velocity.x.abs() < friction) {
+            velocity.x = 0;
+          } else {
+            velocity.x -= velocity.x.sign * friction;
+          }
         }
       } else {
-        velocity.x = targetSpeed;
+        // Airborne: no horizontal control, preserve momentum fully
       }
 
       // Clamp to max speed
@@ -106,33 +113,49 @@ class PlayerComponent extends PositionComponent with HasGameReference {
       );
 
       position += velocity * dt;
-    } else if (swingAnchor != null) {
-      // Rope auto-retracts (fast — like Hook Champ's auto-pull-up)
-      if (ropeLength > GameConstants.ropeMinLength) {
-        ropeLength -= GameConstants.ropeReelSpeed * dt;
-        ropeLength = max(ropeLength, GameConstants.ropeMinLength);
+    } else if (rope != null) {
+      prevSwingPos = position.clone();
+      swingTime += dt;
+
+      final pivot = rope!.activePivot;
+
+      // Rope auto-retracts
+      rope!.reelIn(GameConstants.ropeReelSpeed * dt, GameConstants.ropeMinLength);
+      final currentSegLen = rope!.activeSegmentLength;
+
+      // --- Velocity-based rope physics ---
+      // Apply gravity
+      // Gravity
+      velocity.y += GameConstants.gravity * dt;
+      velocity.y = min(velocity.y, GameConstants.playerMaxFallSpeed);
+
+      // Tiny nudge in movement direction so swings don't stall
+      final swingDir = velocity.x >= 0 ? 1.0 : -1.0;
+      velocity.x += swingDir * 30.0 * dt;
+
+      // Move with velocity
+      position += velocity * dt;
+
+      // Constrain to rope length: remove radial velocity component
+      final diff = position - pivot;
+      final dist = diff.length;
+      if (dist > currentSegLen) {
+        // Snap position to rope length
+        final dir = diff.normalized();
+        position.setFrom(pivot + dir * currentSegLen);
+
+        // Remove outward radial velocity (keep tangential)
+        final radialSpeed = velocity.dot(dir);
+        if (radialSpeed > 0) {
+          velocity -= dir * radialSpeed;
+        }
       }
 
-      // Pendulum gravity torque
-      final gravityTorque =
-          -(GameConstants.gravity / ropeLength) * sin(swingAngle);
-      swingAngularVelocity += gravityTorque * dt;
-
-      // Always apply bias in facing direction to drive the swing
-      swingAngularVelocity +=
-          (facingDirection * GameConstants.swingForwardBias * 0.7 / ropeLength) * dt;
-
-      // Limit max downward swing angle — prevent swinging too far below anchor
-      // swingAngle=0 means directly below anchor. Clamp to prevent going past ~70° behind
-      swingAngle = swingAngle.clamp(-1.2, 1.8);
-
-      // Light damping
-      swingAngularVelocity *= pow(0.997, dt * 60).toDouble();
-
-      swingAngle += swingAngularVelocity * dt;
-
-      position.x = swingAnchor!.x + sin(swingAngle) * ropeLength;
-      position.y = swingAnchor!.y + cos(swingAngle) * ropeLength;
+      // Update swing angle for detach calculations
+      final finalDiff = position - pivot;
+      swingAngle = atan2(finalDiff.x, finalDiff.y);
+      final tangentialSpeed = velocity.x * cos(swingAngle) - velocity.y * sin(swingAngle);
+      swingAngularVelocity = tangentialSpeed / max(currentSegLen, 1);
     }
   }
 
@@ -144,41 +167,28 @@ class PlayerComponent extends PositionComponent with HasGameReference {
   }
 
   void attachToGrapple(Vector2 anchor) {
-    swingAnchor = anchor;
-    ropeLength = (position - anchor).length;
+    final dist = (position - anchor).length;
+    rope = RopeState(anchor: anchor, totalLength: dist);
     isSwinging = true;
     isOnGround = false;
+    prevSwingPos = position.clone();
+    swingTime = 0;
 
+    // Keep existing velocity intact — the rope constraint handles the arc
     final diff = position - anchor;
     swingAngle = atan2(diff.x, diff.y);
-
-    // Convert current velocity to angular velocity — this preserves momentum!
-    final tangentialSpeed = velocity.x * cos(swingAngle) - velocity.y * sin(swingAngle);
-    swingAngularVelocity = tangentialSpeed / ropeLength;
+    swingAngularVelocity = 0;
   }
 
   void detachFromGrapple() {
-    if (!isSwinging) return;
+    if (!isSwinging || rope == null) return;
 
-    // Convert angular velocity back to linear — preserve ALL the swing momentum
-    final speed = swingAngularVelocity * ropeLength;
-    velocity.x = speed * cos(swingAngle);
-    velocity.y = -speed * sin(swingAngle);
-
-    // Boost if releasing during a forward swing
-    if (swingAngularVelocity > 0) {
-      velocity.x *= GameConstants.swingBoostMultiplier;
-      velocity.y -= 80 + (swingAngularVelocity * ropeLength * 0.3).abs();
-    }
-
-    // Don't clamp to run speed anymore — let momentum carry!
-    // Only ensure we're not going backwards
-    if (velocity.x < 0) {
-      velocity.x = 0;
-    }
+    // Just keep current velocity — no artificial boost
+    // The swing's natural speed IS the launch speed
 
     isSwinging = false;
-    swingAnchor = null;
+    rope = null;
+    prevSwingPos = null;
   }
 
   @override

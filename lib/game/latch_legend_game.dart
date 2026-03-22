@@ -17,6 +17,7 @@ import '../config/game_constants.dart';
 import '../levels/level_registry.dart';
 import '../models/level_data.dart';
 import '../ui/hud_component.dart';
+import '../utils/rope_physics.dart';
 
 enum GameState { menu, playing, paused, gameOver, levelComplete }
 
@@ -130,6 +131,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     camera.viewport.add(hud);
 
     // Camera — manual follow with look-ahead (set in update)
+    camera.viewfinder.zoom = GameConstants.cameraZoom;
     camera.viewfinder.position = Vector2(
       player.position.x + GameConstants.cameraLookAheadX,
       player.position.y + GameConstants.cameraLookAheadY,
@@ -159,6 +161,8 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
       player.moveDirection = 0;
     }
 
+    _handleRopeWrapping();
+    _checkSpikes();
     _handleTileCollisions();
     _updateHookChain();
     _updateCamera(dt);
@@ -178,59 +182,88 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
 
     // Check if player is inside a solid tile while swinging — push out without detaching
     if (player.isSwinging) {
-      final px = player.position.x;
-      final py = player.position.y;
       final halfW = player.size.x / 2 - 2;
       final halfH = player.size.y / 2 - 2;
 
-      // Floor check while swinging (most common: swinging into ground)
-      final feetRow = ((py + halfH) / ts).floor();
-      final colL = ((px - halfW) / ts).floor();
-      final colR = ((px + halfW) / ts).floor();
-      for (int c = colL; c <= colR; c++) {
-        if (levelData.isSolid(c, feetRow)) {
-          // Push up out of the floor
-          player.position.y = feetRow * ts - halfH;
-          // Shorten the rope so swing doesn't re-enter
-          if (player.swingAnchor != null) {
-            player.ropeLength = (player.position - player.swingAnchor!).length;
+      // If the player's center is inside a solid tile, they've been swung
+      // deep into geometry — snap back to previous position and shorten rope.
+      final centerCol = (player.position.x / ts).floor();
+      final centerRow = (player.position.y / ts).floor();
+      if (levelData.isSolid(centerCol, centerRow)) {
+        if (player.prevSwingPos != null) {
+          player.position.setFrom(player.prevSwingPos!);
+        }
+        _shortenRopeToPlayer();
+      }
+
+      if (player.isSwinging) {
+        // Floor check while swinging (most common: swinging into ground)
+        // Re-read position fresh for each axis check
+        var py = player.position.y;
+        var px = player.position.x;
+        final feetRow = ((py + halfH) / ts).floor();
+        final colL = ((px - halfW) / ts).floor();
+        final colR = ((px + halfW) / ts).floor();
+        for (int c = colL; c <= colR; c++) {
+          if (levelData.isSolid(c, feetRow)) {
+            player.position.y = feetRow * ts - halfH;
+            _shortenRopeToPlayer();
+            break;
           }
-          break;
         }
-      }
 
-      // Right wall check while swinging
-      final rightCol = ((px + halfW) / ts).floor();
-      final rowT = ((py - halfH + 2) / ts).floor();
-      final rowB = ((py + halfH - 2) / ts).floor();
-      for (int r = rowT; r <= rowB; r++) {
-        if (levelData.isSolid(rightCol, r)) {
-          // Push left out of the wall and detach
-          player.position.x = rightCol * ts - halfW;
-          player.detachFromGrapple();
-          break;
-        }
-      }
+        // Re-read after floor correction
+        px = player.position.x;
+        py = player.position.y;
+        final rowT = ((py - halfH + 2) / ts).floor();
+        final rowB = ((py + halfH - 2) / ts).floor();
 
-      // Left wall check while swinging
-      final leftCol = ((px - halfW) / ts).floor();
-      for (int r = rowT; r <= rowB; r++) {
-        if (levelData.isSolid(leftCol, r)) {
-          player.position.x = (leftCol + 1) * ts + halfW;
-          player.detachFromGrapple();
-          break;
-        }
-      }
-
-      // Ceiling check while swinging
-      final headRow = ((py - halfH) / ts).floor();
-      for (int c = colL; c <= colR; c++) {
-        if (levelData.isSolid(c, headRow)) {
-          player.position.y = (headRow + 1) * ts + halfH;
-          if (player.swingAnchor != null) {
-            player.ropeLength = (player.position - player.swingAnchor!).length;
+        // Right wall check while swinging — push out, shorten rope
+        final rightCol = ((px + halfW) / ts).floor();
+        for (int r = rowT; r <= rowB; r++) {
+          if (levelData.isSolid(rightCol, r)) {
+            player.position.x = rightCol * ts - halfW;
+            // Verify push destination isn't also solid — snap back if so
+            final checkCol = ((player.position.x - halfW) / ts).floor();
+            if (levelData.isSolid(checkCol, r)) {
+              if (player.prevSwingPos != null) {
+                player.position.setFrom(player.prevSwingPos!);
+              }
+            }
+            _shortenRopeToPlayer();
+            break;
           }
-          break;
+        }
+
+        // Left wall check while swinging — push out, shorten rope
+        px = player.position.x;
+        final leftCol = ((px - halfW) / ts).floor();
+        for (int r = rowT; r <= rowB; r++) {
+          if (levelData.isSolid(leftCol, r)) {
+            player.position.x = (leftCol + 1) * ts + halfW;
+            final checkCol = ((player.position.x + halfW) / ts).floor();
+            if (levelData.isSolid(checkCol, r)) {
+              if (player.prevSwingPos != null) {
+                player.position.setFrom(player.prevSwingPos!);
+              }
+            }
+            _shortenRopeToPlayer();
+            break;
+          }
+        }
+
+        // Ceiling check while swinging
+        py = player.position.y;
+        px = player.position.x;
+        final headRow = ((py - halfH) / ts).floor();
+        final cL = ((px - halfW) / ts).floor();
+        final cR = ((px + halfW) / ts).floor();
+        for (int c = cL; c <= cR; c++) {
+          if (levelData.isSolid(c, headRow)) {
+            player.position.y = (headRow + 1) * ts + halfH;
+            _shortenRopeToPlayer();
+            break;
+          }
         }
       }
     }
@@ -327,13 +360,61 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     }
   }
 
+  // --- Rope wrapping/unwrapping ---
+
+  /// After pushing the player out of a wall/floor during a swing,
+  /// shorten the rope so the swing radius matches the new position.
+  void _shortenRopeToPlayer() {
+    if (player.rope == null) return;
+    final pivot = player.rope!.activePivot;
+    final newDist = (player.position - pivot).length;
+    final fixedLen = player.rope!.totalLength - player.rope!.activeSegmentLength;
+    player.rope!.totalLength = fixedLen + newDist;
+  }
+
+  void _handleRopeWrapping() {
+    if (!player.isSwinging || player.rope == null || player.prevSwingPos == null) return;
+
+    // Grace period: don't wrap for the first 0.15s after attaching,
+    // so the jump has time to lift the player above nearby walls.
+    if (player.swingTime < 0.15) return;
+
+    final rope = player.rope!;
+    final playerPos = player.position;
+    final prevPos = player.prevSwingPos!;
+
+    // Unwrap first (loop until stable)
+    bool changed = true;
+    while (changed && rope.wrapPoints.isNotEmpty) {
+      changed = shouldUnwrap(rope, playerPos);
+      if (changed) {
+        rope.wrapPoints.removeLast();
+        // Recompute swing angle from new pivot
+        final newPivot = rope.activePivot;
+        final diff = playerPos - newPivot;
+        player.swingAngle = atan2(diff.x, diff.y);
+      }
+    }
+
+    // Wrap: check if rope sweeps past a convex corner
+    final pivot = rope.activePivot;
+    final segLen = rope.activeSegmentLength;
+    final wp = findWrapPoint(pivot, prevPos, playerPos, segLen, levelData);
+    if (wp != null) {
+      rope.wrapPoints.add(wp);
+      // Recompute swing angle from new pivot
+      final newPivot = rope.activePivot;
+      final diff = playerPos - newPivot;
+      player.swingAngle = atan2(diff.x, diff.y);
+    }
+  }
+
   // --- Hook chain visual ---
 
   void _updateHookChain() {
-    if (player.isSwinging && player.swingAnchor != null) {
+    if (player.isSwinging && player.rope != null) {
       hookChain.isVisible = true;
-      hookChain.startPos = player.position.clone();
-      hookChain.endPos = player.swingAnchor!.clone();
+      hookChain.ropePoints = player.rope!.getPolyline(player.position);
     } else {
       hookChain.isVisible = false;
     }
@@ -350,10 +431,11 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     camPos.x += (targetX - camPos.x) * smooth;
     camPos.y += (targetY - camPos.y) * smooth;
 
-    // Clamp vertical to keep cave in view
+    // Clamp vertical to keep cave in view (account for zoom)
     final mapHeight = levelData.height * GameConstants.tileSize;
-    final minY = size.y / 2;
-    final maxY = mapHeight - size.y / 2;
+    final viewHeight = size.y / camera.viewfinder.zoom;
+    final minY = viewHeight / 2;
+    final maxY = mapHeight - viewHeight / 2;
     // When window is taller than the map, center vertically
     if (minY > maxY) {
       camPos.y = mapHeight / 2;
@@ -401,6 +483,30 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     if (wallOfDeath.active &&
         wallOfDeath.rightEdge > player.position.x - 16) {
       _gameOver();
+    }
+  }
+
+  void _checkSpikes() {
+    final ts = GameConstants.tileSize;
+    final halfW = player.size.x / 2 - 2;
+    final halfH = player.size.y / 2 - 2;
+    // Check tiles at player's feet and center
+    final cols = [
+      (player.position.x / ts).floor(),
+      ((player.position.x - halfW) / ts).floor(),
+      ((player.position.x + halfW) / ts).floor(),
+    ];
+    final rows = [
+      (player.position.y / ts).floor(),
+      ((player.position.y + halfH) / ts).floor(),
+    ];
+    for (final col in cols) {
+      for (final row in rows) {
+        if (levelData.getTile(col, row) == TileType.spike) {
+          _gameOver();
+          return;
+        }
+      }
     }
   }
 
@@ -487,7 +593,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
   // Strongly prefers points that are forward and diagonally up,
   // not directly overhead (which kills forward speed).
 
-  Vector2? _findCeilingHookPoint() {
+  Vector2? _findCeilingHookPoint({double? targetWorldX}) {
     final ts = GameConstants.tileSize;
     final px = player.position.x;
     final py = player.position.y;
@@ -495,12 +601,19 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     Vector2? bestPoint;
     double bestScore = double.negativeInfinity;
 
-    // Scan columns in the player's facing direction
+    // If we have a tap target, scan around that X position
+    // Otherwise scan in facing direction (keyboard fallback)
     final dir = player.facingDirection;
-    final offsets = [120.0, 150.0, 90.0, 180.0, 60.0, 200.0, 40.0];
+    List<double> offsets;
+    if (targetWorldX != null) {
+      // Build offsets centered on the tap target relative to player
+      final tapOffset = targetWorldX - px;
+      offsets = [tapOffset, tapOffset - 30, tapOffset + 30, tapOffset - 60, tapOffset + 60];
+    } else {
+      offsets = [120.0 * dir, 150.0 * dir, 90.0 * dir, 180.0 * dir, 60.0 * dir, 200.0 * dir, 40.0 * dir];
+    }
 
-    for (final rawOffset in offsets) {
-      final offsetX = rawOffset * dir;
+    for (final offsetX in offsets) {
       final hookX = px + offsetX;
       final col = (hookX / ts).floor();
 
@@ -536,14 +649,23 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
           if (dist > GameConstants.hookRange) break;
           if (dist < 30) break; // too close
 
-          // Score: prefer points in the facing direction
-          final dx = (hookPoint.x - px) * dir; // positive = in facing direction
-          final dy = py - hookPoint.y; // positive = above
+          // Line-of-sight check — reject hooks through walls
+          if (!hasLineOfSight(player.position, hookPoint, levelData)) continue;
 
-          final forwardBonus = dx.clamp(0, 250);
-          final heightPenalty = (dy > dist * 0.9) ? -100.0 : 0.0;
-          final distPenalty = dist * 0.1;
-          final score = forwardBonus - distPenalty + heightPenalty;
+          // Score: prefer points close to tap target, or forward if keyboard
+          final double score;
+          if (targetWorldX != null) {
+            // Tap aiming: prefer closest to tap X
+            final tapDist = (hookPoint.x - targetWorldX).abs();
+            score = -tapDist - dist * 0.05;
+          } else {
+            final dx = (hookPoint.x - px) * dir;
+            final dy = py - hookPoint.y;
+            final forwardBonus = dx.clamp(0, 250).toDouble();
+            final heightPenalty = (dy > dist * 0.9) ? -100.0 : 0.0;
+            final distPenalty = dist * 0.1;
+            score = forwardBonus - distPenalty + heightPenalty;
+          }
 
           if (score > bestScore) {
             bestScore = score;
@@ -559,23 +681,28 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
 
   // --- Input ---
 
-  /// Combined jump + grapple: always jump first,
-  /// then also grapple if a ceiling is in range.
-  /// If no ceiling, the hook shoots up and whiffs visually.
-  void handleJumpAndGrapple() {
+  /// Called when the player presses/holds grapple (touch down or key down).
+  /// Jumps if on ground, then shoots the hook to attach.
+  void handleGrappleStart({Offset? screenPos}) {
     if (state != GameState.playing) return;
 
-    if (player.isSwinging) {
-      // Release from grapple
-      player.detachFromGrapple();
-      return;
-    }
+    // If already swinging, ignore (release handles detach)
+    if (player.isSwinging) return;
 
     // Always jump if on ground
     player.jump();
 
-    // Also try to grapple
-    final hookPoint = _findCeilingHookPoint();
+    // Convert screen tap to world X for aiming
+    double? targetWorldX;
+    if (screenPos != null) {
+      final worldPos = camera.viewfinder.position;
+      final screenCenter = size / 2;
+      final zoom = camera.viewfinder.zoom;
+      targetWorldX = worldPos.x + (screenPos.dx - screenCenter.x) / zoom;
+    }
+
+    // Try to grapple
+    final hookPoint = _findCeilingHookPoint(targetWorldX: targetWorldX);
     if (hookPoint != null) {
       player.attachToGrapple(hookPoint);
       // Spark effect at hook point
@@ -587,10 +714,27 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
         lifetime: 0.3,
       ));
     } else {
-      // No ceiling in range — show whiff animation (hook shoots up and misses)
+      // No ceiling in range — show whiff animation toward aimed direction
       if (!hookChain.isWhiffing) {
-        hookChain.startWhiff(player.position);
+        final Vector2 whiffDir;
+        if (targetWorldX != null) {
+          // Aim toward tap position (above player)
+          whiffDir = Vector2(targetWorldX - player.position.x, -GameConstants.hookRange * 0.5).normalized();
+        } else {
+          // Keyboard: aim diagonally forward-up in facing direction
+          whiffDir = Vector2(player.facingDirection.toDouble(), -1).normalized();
+        }
+        hookChain.startWhiff(player.position, whiffDir);
       }
+    }
+  }
+
+  /// Called when the player releases grapple (touch up or key up).
+  /// Detaches from the rope — timing determines the swing-jump boost.
+  void handleGrappleRelease() {
+    if (state != GameState.playing) return;
+    if (player.isSwinging) {
+      player.detachFromGrapple();
     }
   }
 
@@ -613,7 +757,7 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
     _leftHeld = keysPressed.contains(LogicalKeyboardKey.arrowLeft);
     _rightHeld = keysPressed.contains(LogicalKeyboardKey.arrowRight);
 
-    // Jump+grapple on space or up press
+    // Jump+grapple on space or up press, release to detach
     if (event is KeyDownEvent) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         if (state == GameState.playing) {
@@ -626,7 +770,15 @@ class LatchLegendGame extends FlameGame with KeyboardEvents {
 
       if (event.logicalKey == LogicalKeyboardKey.space ||
           event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        handleJumpAndGrapple();
+        handleGrappleStart();
+        return KeyEventResult.handled;
+      }
+    }
+
+    if (event is KeyUpEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.space ||
+          event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        handleGrappleRelease();
         return KeyEventResult.handled;
       }
     }

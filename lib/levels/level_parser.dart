@@ -1,7 +1,7 @@
 import '../models/level_data.dart';
 
 /// Parse an ASCII map into LevelData.
-/// Legend: # = solid, . = air, c = coin, E = exit, S = start
+/// Legend: # = solid, . = air, c = coin, E = exit, S = start, ^ = spikes
 LevelData parseLevelMap(List<String> map) {
   final rows = map.map((row) => row.split('')).toList();
   final height = rows.length;
@@ -22,6 +22,8 @@ LevelData parseLevelMap(List<String> map) {
           row.add(TileType.coin);
         case 'E':
           row.add(TileType.exit);
+        case '^':
+          row.add(TileType.spike);
         case 'S':
           startCol = c;
           startRow = r;

@@ -4,6 +4,7 @@ enum TileType {
   solid,  // cave wall/rock — blocks movement, hook can attach to bottom
   coin,   // collectible coin (placed in empty space)
   exit,   // level exit
+  spike,  // deadly spikes — kills player on contact
 }
 
 /// A level is a 2D grid of tiles.
@@ -32,6 +33,7 @@ class LevelData {
   }
 
   bool isSolid(int col, int row) {
-    return getTile(col, row) == TileType.solid;
+    final t = getTile(col, row);
+    return t == TileType.solid || t == TileType.spike;
   }
 }

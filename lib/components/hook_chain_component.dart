@@ -3,8 +3,7 @@ import 'package:flame/components.dart';
 import '../config/game_constants.dart';
 
 class HookChainComponent extends Component {
-  Vector2 startPos = Vector2.zero();
-  Vector2 endPos = Vector2.zero();
+  List<Vector2> ropePoints = [];
   bool isVisible = false;
 
   // Whiff animation: hook shoots up and retracts
@@ -23,12 +22,16 @@ class HookChainComponent extends Component {
     ..color = GameConstants.grappleColor
     ..style = PaintingStyle.fill;
 
-  /// Start a "miss" animation — hook shoots up from player position
-  void startWhiff(Vector2 playerPos) {
+  static final Paint _wrapDotPaint = Paint()
+    ..color = GameConstants.grappleActiveColor
+    ..style = PaintingStyle.fill;
+
+  /// Start a "miss" animation — hook shoots toward [targetDir] and retracts
+  void startWhiff(Vector2 playerPos, Vector2 targetDir) {
     isWhiffing = true;
     _whiffTime = 0;
     _whiffStart = playerPos.clone();
-    _whiffEnd = Vector2(playerPos.x, playerPos.y - GameConstants.hookRange * 0.6);
+    _whiffEnd = playerPos + targetDir.normalized() * GameConstants.hookRange * 0.6;
   }
 
   @override
@@ -48,17 +51,24 @@ class HookChainComponent extends Component {
       return;
     }
 
-    if (!isVisible) return;
+    if (!isVisible || ropePoints.length < 2) return;
 
-    // Simple thin line — clean like Hook Champ
-    canvas.drawLine(
-      Offset(startPos.x, startPos.y),
-      Offset(endPos.x, endPos.y),
-      _ropePaint,
-    );
+    // Draw connected line segments through all points
+    for (int i = 0; i < ropePoints.length - 1; i++) {
+      final a = ropePoints[i];
+      final b = ropePoints[i + 1];
+      canvas.drawLine(Offset(a.x, a.y), Offset(b.x, b.y), _ropePaint);
+    }
 
-    // Small dot at the anchor point
-    canvas.drawCircle(Offset(endPos.x, endPos.y), 3, _hookDotPaint);
+    // Small dot at the anchor point (first point)
+    final anchor = ropePoints.first;
+    canvas.drawCircle(Offset(anchor.x, anchor.y), 3, _hookDotPaint);
+
+    // Small dots at wrap points (all except first and last)
+    for (int i = 1; i < ropePoints.length - 1; i++) {
+      final p = ropePoints[i];
+      canvas.drawCircle(Offset(p.x, p.y), 2, _wrapDotPaint);
+    }
   }
 
   void _renderWhiff(Canvas canvas) {
