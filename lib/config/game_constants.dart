@@ -21,8 +21,8 @@ class GameConstants {
   static const double hookRange = 350.0;
   static const double hookShootSpeed = 900.0;
   static const double hookWhiffDuration = 0.3;
-  static const double ropeReelSpeed = 120.0;
-  static const double ropeMinLength = 40.0;
+  static const double ropeReelSpeed = 250.0;
+  static const double ropeMinLength = 30.0;
   static const double swingBoostMultiplier = 1.4;
   static const double swingForwardBias = 300.0;
 

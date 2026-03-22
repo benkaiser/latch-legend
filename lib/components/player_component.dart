@@ -96,7 +96,7 @@ class PlayerComponent extends PositionComponent with HasGameReference {
 
       position += velocity * dt;
     } else if (swingAnchor != null) {
-      // Rope auto-retracts
+      // Rope auto-retracts (fast — like Hook Champ's auto-pull-up)
       if (ropeLength > GameConstants.ropeMinLength) {
         ropeLength -= GameConstants.ropeReelSpeed * dt;
         ropeLength = max(ropeLength, GameConstants.ropeMinLength);
@@ -107,11 +107,19 @@ class PlayerComponent extends PositionComponent with HasGameReference {
           -(GameConstants.gravity / ropeLength) * sin(swingAngle);
       swingAngularVelocity += gravityTorque * dt;
 
-      // Player input affects swing: pressing in the swing direction adds torque
+      // Always apply forward bias to keep momentum going right
+      swingAngularVelocity +=
+          (GameConstants.swingForwardBias * 0.5 / ropeLength) * dt;
+
+      // Player input adds extra swing torque
       if (moveDirection != 0) {
         swingAngularVelocity +=
             (moveDirection * GameConstants.swingForwardBias / ropeLength) * dt;
       }
+
+      // Limit max downward swing angle — prevent swinging too far below anchor
+      // swingAngle=0 means directly below anchor. Clamp to prevent going past ~70° behind
+      swingAngle = swingAngle.clamp(-1.2, 1.8);
 
       // Light damping
       swingAngularVelocity *= pow(0.997, dt * 60).toDouble();
